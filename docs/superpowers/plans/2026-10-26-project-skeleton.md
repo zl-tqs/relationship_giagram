@@ -398,10 +398,10 @@ curl -s http://localhost:3000/api/v1/health
 ```bash
 cd frontend && npm run dev &
 sleep 5
-curl -s -o /dev/null -w "%{http_code}" http://localhost:5173
+curl -s -o /dev/null -w "%{http_code}" http://localhost:1420
 ```
 
-预期：输出 `200`。验证后终止该后台进程。
+预期：输出 `200`（模板 vite.config.ts 固定端口 1420）。验证后终止该后台进程。
 
 - [ ] **Step 6: 收尾检查**
 

@@ -21,7 +21,7 @@ backend/    # 后端：NestJS + PostgreSQL
 ## 启动开发环境
 
 ```bash
-# 前端（Web 模式，http://localhost:5173）
+# 前端（Web 模式，http://localhost:1420）
 cd frontend && npm run dev
 
 # 前端（PC 桌面模式，需已安装 Rust）
