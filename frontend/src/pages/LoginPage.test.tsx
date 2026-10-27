@@ -1,3 +1,4 @@
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { LoginPage } from './LoginPage';
@@ -13,7 +14,7 @@ describe('LoginPage', () => {
         <LoginPage />
       </MemoryRouter>,
     );
-    expect(screen.getByText('登录')).toBeInTheDocument();
-    expect(screen.getByText('注册')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: '登录' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: '注册' })).toBeInTheDocument();
   });
 });
