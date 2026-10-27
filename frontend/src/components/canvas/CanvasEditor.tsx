@@ -6,6 +6,7 @@ import { useCanvasStore } from '../../stores/canvasStore';
 import { CharacterNode } from './CharacterNode';
 import { CanvasToolbar } from './CanvasToolbar';
 import { CharacterModal } from '../modals/CharacterModal';
+import { SearchPanel } from '../panels/SearchPanel';
 import type { CharacterData } from '../../types';
 
 const nodeTypes: NodeTypes = { character: CharacterNode };
@@ -45,6 +46,7 @@ export function CanvasEditor() {
         <Controls />
       </ReactFlow>
       <CanvasToolbar />
+      <SearchPanel />
       {selectedEdge && (
         <div
           style={{
