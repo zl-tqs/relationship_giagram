@@ -20,16 +20,28 @@ backend/    # 后端：NestJS + PostgreSQL
 
 ## 启动开发环境
 
+**一键启动（推荐）**：在项目根目录同时启动后端 + 前端，浏览器打开 http://localhost:1420
+
 ```bash
+# 根目录（首次需先安装依赖）
+npm install
+npm run dev
+```
+
+**分开启动**（如需）：
+
+```bash
+# 后端（http://localhost:3000/api/v1/health）
+cd backend && npm run start:dev
+
 # 前端（Web 模式，http://localhost:1420）
 cd frontend && npm run dev
 
 # 前端（PC 桌面模式，需已安装 Rust）
 cd frontend && npm run tauri dev
-
-# 后端（http://localhost:3000/api/v1/health）
-cd backend && npm run start:dev
 ```
+
+> 注意：新建项目、保存等操作依赖后端，后端未启动时会提示"网络错误/加载失败"。
 
 ## 常用命令
 

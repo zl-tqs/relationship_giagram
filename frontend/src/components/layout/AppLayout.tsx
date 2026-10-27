@@ -1,9 +1,10 @@
-import { Button, List, Typography } from 'antd';
+import { Button, List, Typography, message } from 'antd';
 import type { ReactNode } from 'react';
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useProjectStore } from '../../stores/projectStore';
 import { useAuthStore } from '../../stores/authStore';
+import { toApiError } from '../../api/client';
 
 export function AppLayout({ children }: { children: ReactNode }) {
   const recent = useProjectStore((s) => s.recent);
@@ -13,12 +14,16 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
 
   useEffect(() => {
-    loadRecent();
+    loadRecent().catch(() => message.error('加载项目列表失败，请确认后端已启动'));
   }, [loadRecent]);
 
   const onCreate = async () => {
-    const p = await create('未命名项目');
-    navigate(`/project/${p.id}`);
+    try {
+      const p = await create('未命名项目');
+      navigate(`/project/${p.id}`);
+    } catch (e) {
+      message.error(toApiError(e).message);
+    }
   };
 
   return (

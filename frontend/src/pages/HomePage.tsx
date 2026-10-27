@@ -1,7 +1,8 @@
-import { Button, Card, Empty, List, Typography } from 'antd';
+import { Button, Card, Empty, List, Typography, message } from 'antd';
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useProjectStore } from '../stores/projectStore';
+import { toApiError } from '../api/client';
 
 export function HomePage() {
   const recent = useProjectStore((s) => s.recent);
@@ -11,12 +12,16 @@ export function HomePage() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    loadRecent();
+    loadRecent().catch(() => message.error('加载项目列表失败，请确认后端已启动'));
   }, [loadRecent]);
 
   const onCreate = async () => {
-    const project = await create('未命名项目');
-    navigate(`/project/${project.id}`);
+    try {
+      const project = await create('未命名项目');
+      navigate(`/project/${project.id}`);
+    } catch (e) {
+      message.error(toApiError(e).message);
+    }
   };
 
   return (
