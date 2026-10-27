@@ -1,3 +1,5 @@
+import type { Node, Edge } from '@xyflow/react';
+
 export type CharacterData = {
   shape: 'circle' | 'square';
   name: string;
@@ -13,12 +15,12 @@ export type RelationData = {
   arrow: boolean;
 };
 
-export interface CanvasState {
-  nodes: { id: string; type: string; position: { x: number; y: number }; data: CharacterData | Record<string, unknown> }[];
-  edges: { id: string; source: string; target: string; label?: string; data?: RelationData }[];
+export type CanvasState = {
+  nodes: Node[];
+  edges: Edge[];
   viewport: { x: number; y: number; zoom: number };
   version: number;
-}
+};
 
 export interface ProjectSummary {
   id: string;
