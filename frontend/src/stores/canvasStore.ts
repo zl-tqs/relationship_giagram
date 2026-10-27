@@ -15,6 +15,7 @@ interface CanvasStore {
   future: HistoryEntry[];
   addCharacter: (shape: 'circle' | 'square') => void;
   removeNode: (id: string) => void;
+  removeEdge: (id: string) => void;
   updateCharacter: (id: string, data: Partial<CharacterData>) => void;
   updateEdge: (id: string, data: Partial<RelationData>) => void;
   onNodesChange: (changes: NodeChange[]) => void;
@@ -60,6 +61,11 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       nodes: get().nodes.filter((n) => n.id !== id),
       edges: get().edges.filter((e) => e.source !== id && e.target !== id),
     });
+  },
+
+  removeEdge: (id) => {
+    commit(set, get);
+    set({ edges: get().edges.filter((e) => e.id !== id) });
   },
 
   updateCharacter: (id, data) => {

@@ -1,23 +1,55 @@
-import { Background, Controls, ReactFlow, type NodeTypes } from '@xyflow/react';
+import { Background, Controls, ReactFlow, type NodeTypes, type OnSelectionChangeParams } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useState } from 'react';
+import { useHotkeys } from 'react-hotkeys-hook';
 import { ColorPicker, Input, Slider, Switch, Space, Typography } from 'antd';
 import { useCanvasStore } from '../../stores/canvasStore';
 import { CharacterNode } from './CharacterNode';
 import { CanvasToolbar } from './CanvasToolbar';
 import { CharacterModal } from '../modals/CharacterModal';
 import { SearchPanel } from '../panels/SearchPanel';
+import { KEYMAP } from '../../core/shortcuts/keymap';
 import type { CharacterData } from '../../types';
 
 const nodeTypes: NodeTypes = { character: CharacterNode };
 
 export function CanvasEditor() {
-  const { nodes, edges, viewport, onNodesChange, onEdgesChange, updateCharacter, updateEdge } = useCanvasStore();
+  const nodes = useCanvasStore((s) => s.nodes);
+  const edges = useCanvasStore((s) => s.edges);
+  const viewport = useCanvasStore((s) => s.viewport);
+  const onNodesChange = useCanvasStore((s) => s.onNodesChange);
+  const onEdgesChange = useCanvasStore((s) => s.onEdgesChange);
+  const updateCharacter = useCanvasStore((s) => s.updateCharacter);
+  const updateEdge = useCanvasStore((s) => s.updateEdge);
+  const removeNode = useCanvasStore((s) => s.removeNode);
+  const removeEdge = useCanvasStore((s) => s.removeEdge);
+  const undo = useCanvasStore((s) => s.undo);
+  const redo = useCanvasStore((s) => s.redo);
+  const addCharacter = useCanvasStore((s) => s.addCharacter);
+
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
+  const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
 
   const editingNode = nodes.find((n) => n.id === editingNodeId);
   const selectedEdge = edges.find((e) => e.id === selectedEdgeId);
+
+  useHotkeys(KEYMAP.undo, () => undo());
+  useHotkeys(KEYMAP.redo, () => redo());
+  useHotkeys(KEYMAP.newCharacter, () => addCharacter('circle'));
+  useHotkeys(
+    KEYMAP.delete,
+    () => {
+      selectedNodeIds.forEach(removeNode);
+      if (selectedEdgeId) removeEdge(selectedEdgeId);
+    },
+    [selectedNodeIds, selectedEdgeId],
+  );
+
+  const onSelectionChange = (params: OnSelectionChangeParams) => {
+    setSelectedNodeIds(params.nodes.map((n) => n.id));
+    setSelectedEdgeId(params.edges[0]?.id ?? null);
+  };
 
   return (
     <div style={{ width: '100%', height: '100%' }}>
@@ -29,7 +61,7 @@ export function CanvasEditor() {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeDoubleClick={(_, node) => setEditingNodeId(node.id)}
-        onSelectionChange={(params) => setSelectedEdgeId(params.edges[0]?.id ?? null)}
+        onSelectionChange={onSelectionChange}
         onConnect={(c) => {
           const id = `e${Date.now()}`;
           useCanvasStore.setState((s) => ({
