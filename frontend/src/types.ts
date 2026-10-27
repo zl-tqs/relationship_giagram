@@ -1,17 +1,17 @@
-export interface CharacterData {
+export type CharacterData = {
   shape: 'circle' | 'square';
   name: string;
   gender: string;
   intro?: string;
-}
+};
 
-export interface RelationData {
+export type RelationData = {
   type?: string;
   label?: string;
   color: string;
   width: number;
   arrow: boolean;
-}
+};
 
 export interface CanvasState {
   nodes: { id: string; type: string; position: { x: number; y: number }; data: CharacterData | Record<string, unknown> }[];

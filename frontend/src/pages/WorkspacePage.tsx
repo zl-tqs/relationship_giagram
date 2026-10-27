@@ -1,3 +1,9 @@
+import { CanvasEditor } from '../components/canvas/CanvasEditor';
+
 export function WorkspacePage() {
-  return <div>工作区（待实现）</div>;
+  return (
+    <div style={{ height: '100vh', position: 'relative' }}>
+      <CanvasEditor />
+    </div>
+  );
 }
