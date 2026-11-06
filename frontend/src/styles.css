@@ -1,0 +1,13 @@
+/* Windows / WebView2 下 grab、grabbing 光标偶发不可见，改用系统可见光标 */
+.react-flow__pane.draggable {
+  cursor: default !important;
+}
+.react-flow__pane.dragging {
+  cursor: move !important;
+}
+.react-flow__node.draggable {
+  cursor: pointer !important;
+}
+.react-flow__node.draggable.dragging {
+  cursor: move !important;
+}
