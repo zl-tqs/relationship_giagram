@@ -36,7 +36,8 @@ export class AuthService {
   }
 
   private sign(userId: string) {
-    return this.jwt.sign({ sub: userId }, { expiresIn: '15m' });
+    // V1 无刷新令牌机制，有效期放宽至 7 天；后续版本引入 refresh token 后恢复短时效
+    return this.jwt.sign({ sub: userId }, { expiresIn: '7d' });
   }
 
   private public(user: { id: string; email: string | null; nickname: string; isAnonymous: boolean }) {
