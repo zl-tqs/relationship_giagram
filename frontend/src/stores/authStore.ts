@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import * as authApi from '../api/auth.js';
+import { clearTokens, getAccessToken, getRefreshToken, setTokens } from '../core/auth/tokens';
 
 interface AuthState {
   token: string | null;
@@ -11,25 +12,27 @@ interface AuthState {
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
-  token: localStorage.getItem('accessToken'),
+  token: getAccessToken(),
   user: null,
   async login(email, password) {
     const res = await authApi.login({ email, password });
-    localStorage.setItem('accessToken', res.accessToken);
+    setTokens(res);
     set({ token: res.accessToken, user: res.user });
   },
   async register(email, password, nickname) {
     const res = await authApi.register({ email, password, nickname });
-    localStorage.setItem('accessToken', res.accessToken);
+    setTokens(res);
     set({ token: res.accessToken, user: res.user });
   },
   async anonymous() {
     const res = await authApi.anonymous();
-    localStorage.setItem('accessToken', res.accessToken);
+    setTokens(res);
     set({ token: res.accessToken, user: res.user });
   },
   logout() {
-    localStorage.removeItem('accessToken');
+    const refreshToken = getRefreshToken();
+    clearTokens();
     set({ token: null, user: null });
+    if (refreshToken) void authApi.logout(refreshToken).catch(() => undefined);
   },
 }));

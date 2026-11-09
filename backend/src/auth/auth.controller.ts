@@ -1,6 +1,7 @@
 import { Body, Controller, Post } from '@nestjs/common';
 import { AuthService } from './auth.service.js';
 import { LoginDto } from './dto/login.dto.js';
+import { RefreshTokenDto } from './dto/refresh-token.dto.js';
 import { RegisterDto } from './dto/register.dto.js';
 
 @Controller('auth')
@@ -20,5 +21,15 @@ export class AuthController {
   @Post('anonymous')
   anonymous(@Body('nickname') nickname?: string) {
     return this.auth.anonymous(nickname);
+  }
+
+  @Post('refresh')
+  refresh(@Body() dto: RefreshTokenDto) {
+    return this.auth.refresh(dto.refreshToken);
+  }
+
+  @Post('logout')
+  logout(@Body() dto: RefreshTokenDto) {
+    return this.auth.logout(dto.refreshToken);
   }
 }
