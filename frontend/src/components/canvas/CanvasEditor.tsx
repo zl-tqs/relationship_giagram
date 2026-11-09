@@ -1,6 +1,6 @@
-import { Background, Controls, ReactFlow, type NodeTypes, type OnSelectionChangeParams } from '@xyflow/react';
+import { Background, Controls, ReactFlow, type NodeTypes, type OnSelectionChangeParams, type ReactFlowInstance } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useHotkeys } from 'react-hotkeys-hook';
 import { ColorPicker, Input, Slider, Switch, Space, Typography } from 'antd';
 import { useCanvasStore } from '../../stores/canvasStore';
@@ -9,6 +9,8 @@ import { CanvasToolbar } from './CanvasToolbar';
 import { CharacterModal } from '../modals/CharacterModal';
 import { SearchPanel } from '../panels/SearchPanel';
 import { KEYMAP } from '../../core/shortcuts/keymap';
+import { toDisplayEdges } from '../../core/canvas/edgeDisplay';
+import { decorateNodesForSearch } from '../../core/canvas/search';
 import type { CharacterData } from '../../types';
 
 const nodeTypes: NodeTypes = { character: CharacterNode };
@@ -26,17 +28,52 @@ export function CanvasEditor() {
   const undo = useCanvasStore((s) => s.undo);
   const redo = useCanvasStore((s) => s.redo);
   const addCharacter = useCanvasStore((s) => s.addCharacter);
+  const addEdge = useCanvasStore((s) => s.addEdge);
+  const clearSelection = useCanvasStore((s) => s.clearSelection);
 
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const flowRef = useRef<ReactFlowInstance | null>(null);
 
   const editingNode = nodes.find((n) => n.id === editingNodeId);
   const selectedEdge = edges.find((e) => e.id === selectedEdgeId);
+  const displayEdges = useMemo(() => toDisplayEdges(edges), [edges]);
+  const search = useMemo(
+    () => decorateNodesForSearch(nodes, searchOpen ? searchQuery : ''),
+    [nodes, searchOpen, searchQuery],
+  );
 
   useHotkeys(KEYMAP.undo, () => undo());
   useHotkeys(KEYMAP.redo, () => redo());
   useHotkeys(KEYMAP.newCharacter, () => addCharacter('circle'));
+  useHotkeys(KEYMAP.search, () => setSearchOpen((open) => !open), { preventDefault: true });
+  useHotkeys(KEYMAP.zoomIn, () => flowRef.current?.zoomIn({ duration: 200 }), { preventDefault: true });
+  useHotkeys(KEYMAP.zoomOut, () => flowRef.current?.zoomOut({ duration: 200 }), { preventDefault: true });
+  useHotkeys(
+    KEYMAP.selectAll,
+    () => {
+      const state = useCanvasStore.getState();
+      state.selectAll();
+      setSelectedNodeIds(state.nodes.map((node) => node.id));
+      setSelectedEdgeId(state.edges[0]?.id ?? null);
+    },
+    { preventDefault: true },
+  );
+  useHotkeys(
+    KEYMAP.cancel,
+    () => {
+      setSearchOpen(false);
+      setSearchQuery('');
+      setEditingNodeId(null);
+      setSelectedNodeIds([]);
+      setSelectedEdgeId(null);
+      clearSelection();
+    },
+    { enableOnFormTags: true },
+  );
   useHotkeys(
     KEYMAP.delete,
     () => {
@@ -54,22 +91,25 @@ export function CanvasEditor() {
   return (
     <div style={{ width: '100%', height: '100%' }}>
       <ReactFlow
-        nodes={nodes}
-        edges={edges}
+        nodes={search.nodes}
+        edges={displayEdges}
         nodeTypes={nodeTypes}
         defaultViewport={viewport}
+        onInit={(instance) => {
+          flowRef.current = instance;
+        }}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeDoubleClick={(_, node) => setEditingNodeId(node.id)}
         onSelectionChange={onSelectionChange}
         onConnect={(c) => {
           const id = `e${Date.now()}`;
-          useCanvasStore.setState((s) => ({
-            edges: [
-              ...s.edges,
-              { id, source: c.source ?? '', target: c.target ?? '', data: { color: '#333', width: 2, arrow: true } },
-            ],
-          }));
+          addEdge({
+            id,
+            source: c.source ?? '',
+            target: c.target ?? '',
+            data: { color: '#333', width: 2, arrow: true },
+          });
           setSelectedEdgeId(id);
         }}
         deleteKeyCode={null}
@@ -78,7 +118,19 @@ export function CanvasEditor() {
         <Controls />
       </ReactFlow>
       <CanvasToolbar />
-      <SearchPanel />
+      <SearchPanel
+        open={searchOpen}
+        query={searchQuery}
+        onQueryChange={setSearchQuery}
+        onClose={() => {
+          setSearchOpen(false);
+          setSearchQuery('');
+        }}
+        onSelect={(id) => {
+          const target = nodes.find((node) => node.id === id);
+          if (target) flowRef.current?.fitView({ nodes: [target], duration: 400, maxZoom: 1.6 });
+        }}
+      />
       {selectedEdge && (
         <div
           style={{
@@ -96,14 +148,9 @@ export function CanvasEditor() {
           <Typography.Text strong>关系样式</Typography.Text>
           <Space direction="vertical" style={{ width: '100%', marginTop: 8 }}>
             <Input
-              placeholder="关系类型（如师徒）"
+              placeholder="关系类型（显示在连线上，如师徒）"
               value={String(selectedEdge.data?.type ?? '')}
               onChange={(e) => updateEdge(selectedEdge.id, { type: e.target.value })}
-            />
-            <Input
-              placeholder="标注文字"
-              value={String(selectedEdge.data?.label ?? '')}
-              onChange={(e) => updateEdge(selectedEdge.id, { label: e.target.value })}
             />
             <div>
               颜色{' '}

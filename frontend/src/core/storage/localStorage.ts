@@ -1,5 +1,6 @@
 import { save, open } from '@tauri-apps/plugin-dialog';
 import { writeTextFile, readTextFile } from '@tauri-apps/plugin-fs';
+import { normalizeCanvasState } from '../canvas/legacy';
 import type { CanvasState } from '../../types';
 
 export const isDesktop = () => typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -24,5 +25,5 @@ export async function loadLocal(): Promise<CanvasState | null> {
   const selected = await open({ filters: [{ name: '关系图', extensions: ['rmap'] }] });
   if (!selected) return null;
   const path = Array.isArray(selected) ? selected[0] : selected;
-  return JSON.parse(await readTextFile(path));
+  return normalizeCanvasState(JSON.parse(await readTextFile(path)) as CanvasState);
 }

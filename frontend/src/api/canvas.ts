@@ -1,9 +1,10 @@
 import { api } from './client.js';
+import { normalizeCanvasState } from '../core/canvas/legacy.js';
 import type { CanvasState } from '../types.js';
 
 export async function loadCanvas(projectId: string) {
   const { data } = await api.get<CanvasState>(`/projects/${projectId}/canvas`);
-  return data;
+  return normalizeCanvasState(data);
 }
 
 export async function saveCanvas(projectId: string, state: CanvasState) {

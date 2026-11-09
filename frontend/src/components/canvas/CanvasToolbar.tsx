@@ -24,7 +24,7 @@ export function CanvasToolbar() {
       <Button onClick={() => addCharacter('circle')}>+ 圆形角色</Button>
       <Button onClick={() => addCharacter('square')}>+ 方形角色</Button>
       <Button onClick={undo} disabled={!canUndo}>撤销</Button>
-      <Button onClick={redo} disabled={!canRedo}>重做</Button>
+      <Button onClick={redo} disabled={!canRedo}>恢复</Button>
       <Button onClick={onExportPng}>导出 PNG</Button>
       <Button onClick={onExportJson}>导出 JSON</Button>
     </Space>

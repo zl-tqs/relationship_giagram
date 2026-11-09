@@ -9,7 +9,6 @@ export type CharacterData = {
 
 export type RelationData = {
   type?: string;
-  label?: string;
   color: string;
   width: number;
   arrow: boolean;

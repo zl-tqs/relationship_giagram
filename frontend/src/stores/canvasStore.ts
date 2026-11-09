@@ -14,6 +14,7 @@ interface CanvasStore {
   past: HistoryEntry[];
   future: HistoryEntry[];
   addCharacter: (shape: 'circle' | 'square') => void;
+  addEdge: (edge: Edge) => void;
   removeNode: (id: string) => void;
   removeEdge: (id: string) => void;
   updateCharacter: (id: string, data: Partial<CharacterData>) => void;
@@ -22,6 +23,8 @@ interface CanvasStore {
   onEdgesChange: (changes: EdgeChange[]) => void;
   undo: () => void;
   redo: () => void;
+  selectAll: () => void;
+  clearSelection: () => void;
   canUndo: () => boolean;
   canRedo: () => boolean;
 }
@@ -53,6 +56,11 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       data: { shape, name: '新角色', gender: '未知' },
     };
     set({ nodes: [...get().nodes, node] });
+  },
+
+  addEdge: (edge) => {
+    commit(set, get);
+    set({ edges: [...get().edges, edge] });
   },
 
   removeNode: (id) => {
@@ -111,6 +119,20 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       past: [...past, { nodes: get().nodes, edges: get().edges }],
       nodes: next.nodes,
       edges: next.edges,
+    });
+  },
+
+  selectAll: () => {
+    set({
+      nodes: get().nodes.map((node) => ({ ...node, selected: true })),
+      edges: get().edges.map((edge) => ({ ...edge, selected: true })),
+    });
+  },
+
+  clearSelection: () => {
+    set({
+      nodes: get().nodes.map((node) => ({ ...node, selected: false })),
+      edges: get().edges.map((edge) => ({ ...edge, selected: false })),
     });
   },
 
