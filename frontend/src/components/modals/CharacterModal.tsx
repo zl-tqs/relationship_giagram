@@ -30,7 +30,7 @@ export function CharacterModal({ open, initial, onClose, onSubmit }: Props) {
       }
     >
       <Form form={form} layout="vertical">
-        <Form.Item name="shape" label="形状" rules={[{ required: true }]}>
+        <Form.Item name="shape" label="形状" rules={[{ required: true, message: '请选择形状' }]}>
           <Radio.Group>
             <Radio.Button value="circle">圆形</Radio.Button>
             <Radio.Button value="square">方形</Radio.Button>

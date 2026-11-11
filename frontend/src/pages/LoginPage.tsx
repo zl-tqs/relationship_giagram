@@ -55,10 +55,24 @@ export function LoginPage() {
               label: '登录',
               children: (
                 <Form onFinish={onLogin} layout="vertical">
-                  <Form.Item name="email" label="邮箱" rules={[{ required: true, type: 'email' }]}>
+                  <Form.Item
+                    name="email"
+                    label="邮箱"
+                    rules={[
+                      { required: true, message: '请输入邮箱' },
+                      { type: 'email', message: '邮箱格式不正确' },
+                    ]}
+                  >
                     <Input />
                   </Form.Item>
-                  <Form.Item name="password" label="密码" rules={[{ required: true, min: 8 }]}>
+                  <Form.Item
+                    name="password"
+                    label="密码"
+                    rules={[
+                      { required: true, message: '请输入密码' },
+                      { min: 8, message: '密码至少 8 位' },
+                    ]}
+                  >
                     <Input.Password />
                   </Form.Item>
                   <Button type="primary" htmlType="submit" block loading={loading}>登录</Button>
@@ -70,13 +84,31 @@ export function LoginPage() {
               label: '注册',
               children: (
                 <Form onFinish={onRegister} layout="vertical">
-                  <Form.Item name="nickname" label="昵称" rules={[{ required: true }]}>
+                  <Form.Item
+                    name="nickname"
+                    label="昵称"
+                    rules={[{ required: true, message: '请输入昵称' }]}
+                  >
                     <Input />
                   </Form.Item>
-                  <Form.Item name="email" label="邮箱" rules={[{ required: true, type: 'email' }]}>
+                  <Form.Item
+                    name="email"
+                    label="邮箱"
+                    rules={[
+                      { required: true, message: '请输入邮箱' },
+                      { type: 'email', message: '邮箱格式不正确' },
+                    ]}
+                  >
                     <Input />
                   </Form.Item>
-                  <Form.Item name="password" label="密码" rules={[{ required: true, min: 8 }]}>
+                  <Form.Item
+                    name="password"
+                    label="密码"
+                    rules={[
+                      { required: true, message: '请输入密码' },
+                      { min: 8, message: '密码至少 8 位' },
+                    ]}
+                  >
                     <Input.Password />
                   </Form.Item>
                   <Button type="primary" htmlType="submit" block loading={loading}>注册并登录</Button>
