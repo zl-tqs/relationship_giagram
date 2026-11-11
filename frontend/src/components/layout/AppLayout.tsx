@@ -1,17 +1,26 @@
-import { Button, List, Typography, message } from 'antd';
+import { Button, List, Modal, Space, Typography, message } from 'antd';
 import type { ReactNode } from 'react';
-import { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useProjectStore } from '../../stores/projectStore';
 import { useAuthStore } from '../../stores/authStore';
 import { toApiError } from '../../api/client';
+import { ProjectRenameModal } from '../projects/ProjectRenameModal';
+import { ImportProjectButton } from '../projects/ImportProjectButton';
+import type { ProjectSummary } from '../../types';
 
 export function AppLayout({ children }: { children: ReactNode }) {
   const recent = useProjectStore((s) => s.recent);
   const loadRecent = useProjectStore((s) => s.loadRecent);
   const create = useProjectStore((s) => s.create);
+  const update = useProjectStore((s) => s.update);
+  const remove = useProjectStore((s) => s.remove);
+  const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const navigate = useNavigate();
+  const { projectId } = useParams<{ projectId: string }>();
+  const [renameTarget, setRenameTarget] = useState<ProjectSummary | null>(null);
+  const current = recent.find((item) => item.id === projectId);
 
   useEffect(() => {
     loadRecent().catch(() => message.error('加载项目列表失败，请确认后端已启动'));
@@ -26,6 +35,41 @@ export function AppLayout({ children }: { children: ReactNode }) {
     }
   };
 
+  const onLogout = () => {
+    logout();
+    window.location.assign('/login');
+  };
+
+  const onRename = async (name: string) => {
+    if (!renameTarget) return;
+    try {
+      await update(renameTarget.id, name);
+      setRenameTarget(null);
+      message.success('已重命名');
+    } catch (e) {
+      message.error(toApiError(e).message);
+    }
+  };
+
+  const onDelete = (item: ProjectSummary) => {
+    Modal.confirm({
+      title: '删除项目',
+      content: `确定删除「${item.name}」吗？该操作不可撤销。`,
+      okText: '删除',
+      cancelText: '取消',
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        try {
+          await remove(item.id);
+          if (item.id === projectId) navigate('/');
+          message.success('已删除');
+        } catch (e) {
+          message.error(toApiError(e).message);
+        }
+      },
+    });
+  };
+
   return (
     <div style={{ display: 'flex', height: '100vh' }}>
       <aside
@@ -38,34 +82,70 @@ export function AppLayout({ children }: { children: ReactNode }) {
         }}
       >
         <Typography.Title level={5}>项目</Typography.Title>
+        <Typography.Text type="secondary" style={{ marginBottom: 8 }}>
+          当前账号：{user?.nickname ?? '访客'}
+        </Typography.Text>
+        {current && (
+          <Typography.Text strong style={{ marginBottom: 8 }}>
+            当前项目：{current.name}
+          </Typography.Text>
+        )}
         <Button type="primary" block onClick={onCreate}>
           新建文件
         </Button>
-        <Button block onClick={loadRecent} style={{ marginTop: 8 }}>
-          打开文件
+        <Button block onClick={() => navigate('/')} style={{ marginTop: 8 }}>
+          返回主界面
         </Button>
+        <div style={{ marginTop: 8 }}>
+          <ImportProjectButton block />
+        </div>
         <List
           size="small"
           style={{ marginTop: 8, flex: 1, overflow: 'auto' }}
           dataSource={recent}
           renderItem={(item) => (
-            <List.Item onClick={() => navigate(`/project/${item.id}`)} style={{ cursor: 'pointer' }}>
-              {item.name}
+            <List.Item
+              onClick={() => navigate(`/project/${item.id}`)}
+              style={{ cursor: 'pointer', paddingInline: 0 }}
+            >
+              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name}</span>
+              <Space size={0}>
+                <Button
+                  type="link"
+                  size="small"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setRenameTarget(item);
+                  }}
+                >
+                  改名
+                </Button>
+                <Button
+                  type="link"
+                  size="small"
+                  danger
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDelete(item);
+                  }}
+                >
+                  删除
+                </Button>
+              </Space>
             </List.Item>
           )}
         />
-        <Button
-          block
-          type="text"
-          onClick={() => {
-            logout();
-            navigate('/login');
-          }}
-        >
+        <Button block type="text" onClick={onLogout}>
           退出登录
         </Button>
       </aside>
       <main style={{ flex: 1, position: 'relative' }}>{children}</main>
+      <ProjectRenameModal
+        open={!!renameTarget}
+        initialName={renameTarget?.name ?? ''}
+        onCancel={() => setRenameTarget(null)}
+        onSubmit={onRename}
+      />
     </div>
   );
 }
