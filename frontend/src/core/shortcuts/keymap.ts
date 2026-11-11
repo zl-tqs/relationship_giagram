@@ -7,7 +7,8 @@ export const KEYMAP = {
   delete: ['delete', 'backspace'],
   search: 'mod+f',
   zoomIn: 'mod+=',
-  zoomOut: 'mod+-',
+  zoomOut: ['mod+shift+minus', 'mod+minus'],
+  reverse: 'r',
   selectAll: 'mod+a',
   cancel: 'escape',
 } as const;

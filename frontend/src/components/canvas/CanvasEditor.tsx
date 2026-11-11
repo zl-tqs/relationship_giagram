@@ -1,8 +1,8 @@
 import { Background, Controls, ReactFlow, type NodeTypes, type OnSelectionChangeParams, type ReactFlowInstance } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { useHotkeys } from 'react-hotkeys-hook';
-import { ColorPicker, Input, Slider, Switch, Space, Typography } from 'antd';
+import { Button, ColorPicker, Input, Slider, Switch, Space, Typography } from 'antd';
 import { useCanvasStore } from '../../stores/canvasStore';
 import { CharacterNode } from './CharacterNode';
 import { CanvasToolbar } from './CanvasToolbar';
@@ -23,6 +23,7 @@ export function CanvasEditor() {
   const onEdgesChange = useCanvasStore((s) => s.onEdgesChange);
   const updateCharacter = useCanvasStore((s) => s.updateCharacter);
   const updateEdge = useCanvasStore((s) => s.updateEdge);
+  const reverseEdge = useCanvasStore((s) => s.reverseEdge);
   const removeNode = useCanvasStore((s) => s.removeNode);
   const removeEdge = useCanvasStore((s) => s.removeEdge);
   const undo = useCanvasStore((s) => s.undo);
@@ -52,6 +53,13 @@ export function CanvasEditor() {
   useHotkeys(KEYMAP.search, () => setSearchOpen((open) => !open), { preventDefault: true });
   useHotkeys(KEYMAP.zoomIn, () => flowRef.current?.zoomIn({ duration: 200 }), { preventDefault: true });
   useHotkeys(KEYMAP.zoomOut, () => flowRef.current?.zoomOut({ duration: 200 }), { preventDefault: true });
+  useHotkeys(
+    KEYMAP.reverse,
+    () => {
+      if (selectedEdgeId) reverseEdge(selectedEdgeId);
+    },
+    [selectedEdgeId],
+  );
   useHotkeys(
     KEYMAP.selectAll,
     () => {
@@ -83,10 +91,14 @@ export function CanvasEditor() {
     [selectedNodeIds, selectedEdgeId],
   );
 
-  const onSelectionChange = (params: OnSelectionChangeParams) => {
-    setSelectedNodeIds(params.nodes.map((n) => n.id));
-    setSelectedEdgeId(params.edges[0]?.id ?? null);
-  };
+  const onSelectionChange = useCallback((params: OnSelectionChangeParams) => {
+    const nodeIds = params.nodes.map((n) => n.id);
+    setSelectedNodeIds((prev) =>
+      prev.length === nodeIds.length && prev.every((id, index) => id === nodeIds[index]) ? prev : nodeIds,
+    );
+    const edgeId = params.edges[0]?.id ?? null;
+    setSelectedEdgeId((prev) => (prev === edgeId ? prev : edgeId));
+  }, []);
 
   return (
     <div style={{ width: '100%', height: '100%' }}>
@@ -146,6 +158,9 @@ export function CanvasEditor() {
           }}
         >
           <Typography.Text strong>关系样式</Typography.Text>
+          <Button size="small" block style={{ marginTop: 6 }} onClick={() => reverseEdge(selectedEdge.id)}>
+            反向箭头 (R)
+          </Button>
           <Space direction="vertical" style={{ width: '100%', marginTop: 8 }}>
             <Input
               placeholder="关系类型（显示在连线上，如师徒）"

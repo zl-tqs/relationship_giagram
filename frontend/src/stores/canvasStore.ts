@@ -19,6 +19,7 @@ interface CanvasStore {
   removeEdge: (id: string) => void;
   updateCharacter: (id: string, data: Partial<CharacterData>) => void;
   updateEdge: (id: string, data: Partial<RelationData>) => void;
+  reverseEdge: (id: string) => void;
   onNodesChange: (changes: NodeChange[]) => void;
   onEdgesChange: (changes: EdgeChange[]) => void;
   undo: () => void;
@@ -87,6 +88,25 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     commit(set, get);
     set({
       edges: get().edges.map((e) => (e.id === id ? { ...e, data: { ...e.data, ...data } } : e)),
+    });
+  },
+
+  reverseEdge: (id) => {
+    const exists = get().edges.some((edge) => edge.id === id);
+    if (!exists) return;
+    commit(set, get);
+    set({
+      edges: get().edges.map((edge) =>
+        edge.id === id
+          ? {
+              ...edge,
+              source: edge.target,
+              target: edge.source,
+              sourceHandle: edge.targetHandle,
+              targetHandle: edge.sourceHandle,
+            }
+          : edge,
+      ),
     });
   },
 

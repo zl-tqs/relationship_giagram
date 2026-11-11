@@ -50,4 +50,27 @@ describe('canvasStore.addEdge', () => {
     expect(useCanvasStore.getState().nodes.some((n) => n.selected)).toBe(false);
     expect(useCanvasStore.getState().edges.some((e) => e.selected)).toBe(false);
   });
+
+  it('reverseEdge 交换起点/终点与 handle，并可撤销', () => {
+    useCanvasStore.setState({
+      edges: [{ ...edge, sourceHandle: 's', targetHandle: 't' }],
+    });
+
+    useCanvasStore.getState().reverseEdge('e1');
+
+    expect(useCanvasStore.getState().edges[0]).toMatchObject({
+      source: 'n2',
+      target: 'n1',
+      sourceHandle: 't',
+      targetHandle: 's',
+    });
+
+    useCanvasStore.getState().undo();
+    expect(useCanvasStore.getState().edges[0]).toMatchObject({
+      source: 'n1',
+      target: 'n2',
+      sourceHandle: 's',
+      targetHandle: 't',
+    });
+  });
 });
