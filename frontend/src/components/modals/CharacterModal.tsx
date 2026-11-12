@@ -1,6 +1,14 @@
-import { Form, Input, Modal, Radio } from 'antd';
+import { AutoComplete, Form, Input, Modal, Radio } from 'antd';
 import { useEffect } from 'react';
 import type { CharacterData } from '../../types';
+
+export const GENDER_OPTIONS = ['男', '女', '未知'].map((value) => ({ value, label: value }));
+const DEFAULT_CHARACTER: CharacterData = {
+  shape: 'circle',
+  name: '',
+  gender: '未知',
+  intro: '',
+};
 
 interface Props {
   open: boolean;
@@ -13,7 +21,12 @@ export function CharacterModal({ open, initial, onClose, onSubmit }: Props) {
   const [form] = Form.useForm();
 
   useEffect(() => {
-    if (open) form.setFieldsValue(initial ?? { shape: 'circle', name: '', gender: '', intro: '' });
+    if (!open) return;
+    form.setFieldsValue({
+      ...DEFAULT_CHARACTER,
+      ...initial,
+      gender: initial?.gender?.trim() ? initial.gender : DEFAULT_CHARACTER.gender,
+    });
   }, [open, initial, form]);
 
   return (
@@ -39,8 +52,22 @@ export function CharacterModal({ open, initial, onClose, onSubmit }: Props) {
         <Form.Item name="name" label="姓名" rules={[{ required: true, message: '姓名必填' }]}>
           <Input maxLength={50} />
         </Form.Item>
-        <Form.Item name="gender" label="性别" rules={[{ required: true, message: '性别必填' }]}>
-          <Input maxLength={20} />
+        <Form.Item
+          name="gender"
+          label="性别"
+          rules={[
+            { required: true, message: '性别必填' },
+            { max: 20, message: '性别不能超过 20 个字符' },
+          ]}
+        >
+          <AutoComplete
+            options={GENDER_OPTIONS}
+            filterOption={() => true}
+            defaultActiveFirstOption={false}
+            placeholder="选择或输入性别"
+          >
+            <Input />
+          </AutoComplete>
         </Form.Item>
         <Form.Item name="intro" label="简介">
           <Input.TextArea rows={3} />
