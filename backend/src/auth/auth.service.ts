@@ -43,6 +43,14 @@ export class AuthService {
     return { ...(await this.issueTokens(user.id)), user: this.public(user) };
   }
 
+  async me(userId: string) {
+    const user = await this.users.findById(userId);
+    if (!user) {
+      throw new UnauthorizedException({ code: 'UNAUTHORIZED', message: '登录状态已失效' });
+    }
+    return this.public(user);
+  }
+
   async refresh(rawToken: string) {
     const token = await this.findActive(rawToken);
     token.revokedAt = new Date();

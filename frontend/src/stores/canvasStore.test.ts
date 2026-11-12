@@ -74,6 +74,26 @@ describe('canvasStore.addEdge', () => {
     });
   });
 
+  it('加载已有节点后新增角色不会复用旧节点 ID', () => {
+    useCanvasStore.getState().loadState(
+      [
+        { id: 'n1', position: { x: 0, y: 0 }, data: { name: 'A' } },
+        { id: 'n2', position: { x: 0, y: 0 }, data: { name: 'B' } },
+        { id: 'n3', position: { x: 0, y: 0 }, data: { name: 'C' } },
+      ],
+      [],
+      { x: 0, y: 0, zoom: 1 },
+      2,
+    );
+
+    useCanvasStore.getState().addCharacter('circle');
+
+    const ids = useCanvasStore.getState().nodes.map((node) => node.id);
+    expect(ids).toHaveLength(4);
+    expect(new Set(ids).size).toBe(4);
+    expect(ids[3]).not.toBe('n1');
+  });
+
   it('loadState 重置历史，applySnapshot 将当前内容压入撤销栈', () => {
     useCanvasStore.setState({
       nodes: [{ id: 'old', position: { x: 0, y: 0 }, data: {} }],

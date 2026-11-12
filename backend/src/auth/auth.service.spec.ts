@@ -99,6 +99,29 @@ describe('AuthService', () => {
     expect(next.tokenHash).not.toBe(row.tokenHash);
   });
 
+  it('me 返回当前用户的公开信息', async () => {
+    usersRepo.findOne.mockResolvedValue({
+      id: 'u1',
+      email: 'a@b.com',
+      nickname: '作者',
+      isAnonymous: false,
+    });
+
+    await expect(service.me('u1')).resolves.toEqual({
+      id: 'u1',
+      email: 'a@b.com',
+      nickname: '作者',
+      isAnonymous: false,
+    });
+  });
+
+  it('me 用户不存在时抛 401', async () => {
+    usersRepo.findOne.mockResolvedValue(null);
+    await expect(service.me('missing')).rejects.toMatchObject({
+      response: { code: 'UNAUTHORIZED' },
+    });
+  });
+
   it('refresh 对不存在的令牌抛 401', async () => {
     refreshRepo.findOne.mockResolvedValue(null);
     await expect(service.refresh('missing')).rejects.toMatchObject({

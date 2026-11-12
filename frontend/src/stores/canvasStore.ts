@@ -32,8 +32,14 @@ interface CanvasStore {
   canRedo: () => boolean;
 }
 
-let seq = 0;
-const nextId = () => `n${++seq}`;
+function nextNodeId(nodes: Node[]) {
+  let max = 0;
+  for (const node of nodes) {
+    const match = /^n(\d+)$/.exec(node.id);
+    if (match) max = Math.max(max, Number(match[1]));
+  }
+  return `n${max + 1}`;
+}
 
 function commit(set: (partial: Partial<CanvasStore>) => void, get: () => CanvasStore) {
   const { nodes, edges, past } = get();
@@ -51,7 +57,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
 
   addCharacter: (shape) => {
     commit(set, get);
-    const id = nextId();
+    const id = nextNodeId(get().nodes);
     const node: Node = {
       id,
       type: 'character',

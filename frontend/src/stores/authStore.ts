@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import * as authApi from '../api/auth.js';
+import { refreshAccessToken } from '../api/authRefresh';
 import { clearTokens, getAccessToken, getRefreshToken, setTokens } from '../core/auth/tokens';
 import { clearStoredUser, getStoredUser, setStoredUser } from '../core/auth/user';
 import { clearUserDrafts } from '../core/save/drafts';
@@ -10,6 +11,7 @@ interface AuthState {
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, nickname: string) => Promise<void>;
   anonymous: () => Promise<void>;
+  restore: () => Promise<void>;
   logout: () => void;
 }
 
@@ -33,6 +35,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     setTokens(res);
     setStoredUser(res.user);
     set({ token: res.accessToken, user: res.user });
+  },
+  async restore() {
+    if (!getAccessToken() && !getRefreshToken()) throw new Error('NO_SESSION');
+    if (!getAccessToken()) await refreshAccessToken();
+    const user = await authApi.me();
+    setStoredUser(user);
+    set({ token: getAccessToken(), user });
   },
   logout() {
     const refreshToken = getRefreshToken();
