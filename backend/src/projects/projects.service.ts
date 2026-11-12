@@ -2,6 +2,7 @@ import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/commo
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Canvas } from '../canvases/canvas.entity.js';
+import { CanvasSnapshot } from '../snapshots/canvas-snapshot.entity.js';
 import { Project } from './project.entity.js';
 import { CreateProjectDto } from './dto/create-project.dto.js';
 import { UpdateProjectDto } from './dto/update-project.dto.js';
@@ -11,6 +12,7 @@ export class ProjectsService {
   constructor(
     @InjectRepository(Project) private readonly projects: Repository<Project>,
     @InjectRepository(Canvas) private readonly canvases: Repository<Canvas>,
+    @InjectRepository(CanvasSnapshot) private readonly snapshots: Repository<CanvasSnapshot>,
   ) {}
 
   async recent(userId: string) {
@@ -44,6 +46,7 @@ export class ProjectsService {
 
   async remove(userId: string, id: string) {
     const project = await this.findOne(userId, id);
+    await this.snapshots.softDelete({ projectId: project.id });
     return this.projects.softDelete(project.id);
   }
 }

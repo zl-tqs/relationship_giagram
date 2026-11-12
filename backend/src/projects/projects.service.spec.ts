@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Canvas } from '../canvases/canvas.entity.js';
+import { CanvasSnapshot } from '../snapshots/canvas-snapshot.entity.js';
 import { Project } from './project.entity.js';
 import { ProjectsService } from './projects.service.js';
 
@@ -14,6 +15,7 @@ describe('ProjectsService', () => {
     create: vi.fn((p) => p),
   };
   const canvasesRepo = { save: vi.fn(), create: vi.fn((c) => c) };
+  const snapshotsRepo = { softDelete: vi.fn() };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -21,6 +23,7 @@ describe('ProjectsService', () => {
         ProjectsService,
         { provide: getRepositoryToken(Project), useValue: projectsRepo },
         { provide: getRepositoryToken(Canvas), useValue: canvasesRepo },
+        { provide: getRepositoryToken(CanvasSnapshot), useValue: snapshotsRepo },
       ],
     }).compile();
     service = module.get(ProjectsService);
@@ -35,5 +38,11 @@ describe('ProjectsService', () => {
   it('findOne 非所有者抛 403', async () => {
     projectsRepo.findOne.mockResolvedValue({ id: 'p1', ownerId: 'other' });
     await expect(service.findOne('u1', 'p1')).rejects.toMatchObject({ response: { code: 'FORBIDDEN' } });
+  });
+
+  it('删除项目时级联软删除快照', async () => {
+    projectsRepo.findOne.mockResolvedValue({ id: 'p1', ownerId: 'u1' });
+    await service.remove('u1', 'p1');
+    expect(snapshotsRepo.softDelete).toHaveBeenCalledWith({ projectId: 'p1' });
   });
 });
