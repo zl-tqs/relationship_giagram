@@ -26,6 +26,8 @@ interface CanvasStore {
   redo: () => void;
   selectAll: () => void;
   clearSelection: () => void;
+  loadState: (nodes: Node[], edges: Edge[], viewport: CanvasStore['viewport'], version: number) => void;
+  applySnapshot: (nodes: Node[], edges: Edge[]) => void;
   canUndo: () => boolean;
   canRedo: () => boolean;
 }
@@ -153,6 +155,21 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     set({
       nodes: get().nodes.map((node) => ({ ...node, selected: false })),
       edges: get().edges.map((edge) => ({ ...edge, selected: false })),
+    });
+  },
+
+  loadState: (nodes, edges, viewport, version) => {
+    set({ nodes, edges, viewport, version, past: [], future: [] });
+  },
+
+  applySnapshot: (nodes, edges) => {
+    const { nodes: currentNodes, edges: currentEdges, past } = get();
+    const nextPast = past.length >= HISTORY_LIMIT ? past.slice(1) : past;
+    set({
+      past: [...nextPast, { nodes: currentNodes, edges: currentEdges }],
+      future: [],
+      nodes,
+      edges,
     });
   },
 

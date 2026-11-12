@@ -1,5 +1,5 @@
-import { lazy, Suspense } from 'react';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { lazy, Suspense, type ReactNode } from 'react';
+import { createBrowserRouter, Navigate, RouterProvider } from 'react-router-dom';
 import { RequireAuth } from './components/auth/RequireAuth';
 
 const LoginPage = lazy(() => import('./pages/LoginPage').then((m) => ({ default: m.LoginPage })));
@@ -10,29 +10,31 @@ function PageFallback() {
   return <div style={{ display: 'grid', placeItems: 'center', minHeight: '100vh' }}>加载中…</div>;
 }
 
+function withFallback(node: ReactNode) {
+  return <Suspense fallback={<PageFallback />}>{node}</Suspense>;
+}
+
+const router = createBrowserRouter([
+  { path: '/login', element: withFallback(<LoginPage />) },
+  {
+    path: '/project/:projectId',
+    element: (
+      <RequireAuth>
+        {withFallback(<WorkspacePage />)}
+      </RequireAuth>
+    ),
+  },
+  {
+    path: '/',
+    element: (
+      <RequireAuth>
+        {withFallback(<HomePage />)}
+      </RequireAuth>
+    ),
+  },
+  { path: '*', element: <Navigate to="/" replace /> },
+]);
+
 export default function App() {
-  return (
-    <Suspense fallback={<PageFallback />}>
-      <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route
-          path="/project/:projectId"
-          element={
-            <RequireAuth>
-              <WorkspacePage />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/"
-          element={
-            <RequireAuth>
-              <HomePage />
-            </RequireAuth>
-          }
-        />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </Suspense>
-  );
+  return <RouterProvider router={router} />;
 }

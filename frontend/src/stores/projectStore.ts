@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { listRecent, createProject, updateProject, deleteProject } from '../api/projects';
+import { markProjectCreatedThisSession } from '../core/save/flags';
 import type { ProjectSummary } from '../types';
 
 interface ProjectState {
@@ -24,6 +25,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   },
   async create(name) {
     const project = await createProject(name);
+    markProjectCreatedThisSession(project.id);
     set({ recent: [project, ...get().recent] });
     return project;
   },

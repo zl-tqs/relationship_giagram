@@ -4,7 +4,14 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useProjectStore } from '../../stores/projectStore';
 import { useAuthStore } from '../../stores/authStore';
+import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { toApiError } from '../../api/client';
+import { deleteDraft } from '../../core/save/drafts';
+import {
+  clearManualSaved,
+  clearOriginalFileName,
+  clearProjectCreatedThisSession,
+} from '../../core/save/flags';
 import { ProjectRenameModal } from '../projects/ProjectRenameModal';
 import { ImportProjectButton } from '../projects/ImportProjectButton';
 import type { ProjectSummary } from '../../types';
@@ -17,6 +24,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const remove = useProjectStore((s) => s.remove);
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
+  const requestLeave = useWorkspaceStore((s) => s.requestLeave);
   const navigate = useNavigate();
   const { projectId } = useParams<{ projectId: string }>();
   const [renameTarget, setRenameTarget] = useState<ProjectSummary | null>(null);
@@ -26,18 +34,24 @@ export function AppLayout({ children }: { children: ReactNode }) {
     loadRecent().catch(() => message.error('加载项目列表失败，请确认后端已启动'));
   }, [loadRecent]);
 
-  const onCreate = async () => {
-    try {
-      const p = await create('未命名项目');
-      navigate(`/project/${p.id}`);
-    } catch (e) {
-      message.error(toApiError(e).message);
-    }
+  const onCreate = () => {
+    requestLeave(() => {
+      void (async () => {
+        try {
+          const p = await create('未命名项目');
+          navigate(`/project/${p.id}`);
+        } catch (e) {
+          message.error(toApiError(e).message);
+        }
+      })();
+    });
   };
 
   const onLogout = () => {
-    logout();
-    window.location.assign('/login');
+    requestLeave(() => {
+      logout();
+      window.location.assign('/login');
+    });
   };
 
   const onRename = async (name: string) => {
@@ -61,7 +75,11 @@ export function AppLayout({ children }: { children: ReactNode }) {
       onOk: async () => {
         try {
           await remove(item.id);
-          if (item.id === projectId) navigate('/');
+          await deleteDraft(user?.id ?? 'anonymous', item.id);
+          clearManualSaved(item.id);
+          clearOriginalFileName(item.id);
+          clearProjectCreatedThisSession(item.id);
+          if (item.id === projectId) window.location.assign('/');
           message.success('已删除');
         } catch (e) {
           message.error(toApiError(e).message);
@@ -93,7 +111,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
         <Button type="primary" block onClick={onCreate}>
           新建文件
         </Button>
-        <Button block onClick={() => navigate('/')} style={{ marginTop: 8 }}>
+        <Button block onClick={() => requestLeave(() => navigate('/'))} style={{ marginTop: 8 }}>
           返回主界面
         </Button>
         <div style={{ marginTop: 8 }}>
@@ -105,7 +123,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
           dataSource={recent}
           renderItem={(item) => (
             <List.Item
-              onClick={() => navigate(`/project/${item.id}`)}
+              onClick={() => requestLeave(() => navigate(`/project/${item.id}`))}
               style={{ cursor: 'pointer', paddingInline: 0 }}
             >
               <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name}</span>

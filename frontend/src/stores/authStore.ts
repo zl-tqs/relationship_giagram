@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import * as authApi from '../api/auth.js';
 import { clearTokens, getAccessToken, getRefreshToken, setTokens } from '../core/auth/tokens';
 import { clearStoredUser, getStoredUser, setStoredUser } from '../core/auth/user';
+import { clearUserDrafts } from '../core/save/drafts';
 
 interface AuthState {
   token: string | null;
@@ -12,7 +13,7 @@ interface AuthState {
   logout: () => void;
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
   token: getAccessToken(),
   user: getStoredUser(),
   async login(email, password) {
@@ -35,9 +36,11 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
   logout() {
     const refreshToken = getRefreshToken();
+    const userId = get().user?.id;
     clearTokens();
     clearStoredUser();
     set({ token: null, user: null });
+    if (userId) void clearUserDrafts(userId);
     if (refreshToken) void authApi.logout(refreshToken).catch(() => undefined);
   },
 }));

@@ -27,3 +27,22 @@ export interface ProjectSummary {
   description?: string | null;
   lastModifiedAt: string;
 }
+
+export interface SnapshotMeta {
+  id: string;
+  name: string;
+  type: 'manual' | 'safety';
+  baseRevision: number;
+  contentHash: string | null;
+  sizeBytes: number;
+  createdAt: string;
+  createdBy: string;
+}
+
+export interface SnapshotDetail extends SnapshotMeta {
+  data: {
+    schemaVersion: number;
+    nodes: Node[];
+    edges: Edge[];
+  };
+}

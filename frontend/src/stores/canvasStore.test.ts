@@ -73,4 +73,38 @@ describe('canvasStore.addEdge', () => {
       targetHandle: 't',
     });
   });
+
+  it('loadState 重置历史，applySnapshot 将当前内容压入撤销栈', () => {
+    useCanvasStore.setState({
+      nodes: [{ id: 'old', position: { x: 0, y: 0 }, data: {} }],
+      edges: [],
+      past: [{ nodes: [], edges: [] }],
+      future: [{ nodes: [], edges: [] }],
+    });
+
+    useCanvasStore.getState().loadState(
+      [{ id: 'server', position: { x: 0, y: 0 }, data: {} }],
+      [],
+      { x: 1, y: 2, zoom: 1.5 },
+      4,
+    );
+
+    expect(useCanvasStore.getState()).toMatchObject({
+      version: 4,
+      viewport: { x: 1, y: 2, zoom: 1.5 },
+      past: [],
+      future: [],
+    });
+
+    useCanvasStore.getState().applySnapshot(
+      [{ id: 'snapshot', position: { x: 0, y: 0 }, data: {} }],
+      [],
+    );
+
+    expect(useCanvasStore.getState().nodes[0].id).toBe('snapshot');
+    expect(useCanvasStore.getState().past[0].nodes[0].id).toBe('server');
+
+    useCanvasStore.getState().undo();
+    expect(useCanvasStore.getState().nodes[0].id).toBe('server');
+  });
 });

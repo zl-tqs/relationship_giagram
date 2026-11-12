@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useProjectStore } from './projectStore';
-import { deleteProject, updateProject } from '../api/projects';
+import { createProject, deleteProject, updateProject } from '../api/projects';
+import { isProjectCreatedThisSession } from '../core/save/flags';
 
 vi.mock('../api/projects', () => ({
   listRecent: vi.fn(),
@@ -11,6 +12,7 @@ vi.mock('../api/projects', () => ({
 
 const updateMock = vi.mocked(updateProject);
 const deleteMock = vi.mocked(deleteProject);
+const createMock = vi.mocked(createProject);
 
 const project = (id: string, name: string) => ({
   id,
@@ -23,6 +25,14 @@ describe('projectStore', () => {
     useProjectStore.setState({ recent: [project('p1', '旧名'), project('p2', '另一个')], loading: false });
     updateMock.mockReset();
     deleteMock.mockReset();
+    createMock.mockReset();
+    sessionStorage.clear();
+  });
+
+  it('create 标记本次会话新建', async () => {
+    createMock.mockResolvedValue(project('p3', '新项目'));
+    await useProjectStore.getState().create('新项目');
+    expect(isProjectCreatedThisSession('p3')).toBe(true);
   });
 
   it('update 重命名并同步最近列表', async () => {

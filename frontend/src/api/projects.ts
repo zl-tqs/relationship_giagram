@@ -6,6 +6,11 @@ export async function listRecent() {
   return data;
 }
 
+export async function getProject(id: string) {
+  const { data } = await api.get<ProjectSummary>(`/projects/${id}`);
+  return data;
+}
+
 export async function createProject(name: string) {
   const { data } = await api.post<ProjectSummary>('/projects', { name });
   return data;

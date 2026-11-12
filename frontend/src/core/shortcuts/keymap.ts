@@ -1,6 +1,7 @@
 export const KEYMAP = {
   save: 'mod+s',
-  saveAs: 'mod+shift+s',
+  createSnapshot: 'mod+shift+s',
+  saveAs: 'mod+alt+s',
   undo: 'mod+z',
   redo: 'mod+shift+z',
   newCharacter: 'mod+alt+enter',
