@@ -8,6 +8,7 @@ import { CharacterNode } from './CharacterNode';
 import { CanvasToolbar } from './CanvasToolbar';
 import { CharacterModal } from '../modals/CharacterModal';
 import { SearchPanel } from '../panels/SearchPanel';
+import { ShortcutHelpModal } from '../save/ShortcutHelpModal';
 import { KEYMAP } from '../../core/shortcuts/keymap';
 import { toDisplayEdges } from '../../core/canvas/edgeDisplay';
 import { decorateNodesForSearch } from '../../core/canvas/search';
@@ -37,6 +38,7 @@ export function CanvasEditor() {
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [helpOpen, setHelpOpen] = useState(false);
   const flowRef = useRef<ReactFlowInstance | null>(null);
 
   const editingNode = nodes.find((n) => n.id === editingNodeId);
@@ -51,6 +53,7 @@ export function CanvasEditor() {
   useHotkeys(KEYMAP.redo, () => redo());
   useHotkeys(KEYMAP.newCharacter, () => addCharacter('circle'));
   useHotkeys(KEYMAP.search, () => setSearchOpen((open) => !open), { preventDefault: true });
+  useHotkeys(KEYMAP.help, () => setHelpOpen(true), { preventDefault: true });
   useHotkeys(KEYMAP.zoomIn, () => flowRef.current?.zoomIn({ duration: 200 }), { preventDefault: true });
   useHotkeys(KEYMAP.zoomOut, () => flowRef.current?.zoomOut({ duration: 200 }), { preventDefault: true });
   useHotkeys(
@@ -129,7 +132,7 @@ export function CanvasEditor() {
         <Background />
         <Controls />
       </ReactFlow>
-      <CanvasToolbar />
+      <CanvasToolbar onOpenHelp={() => setHelpOpen(true)} />
       <SearchPanel
         open={searchOpen}
         query={searchQuery}
@@ -167,6 +170,12 @@ export function CanvasEditor() {
               value={String(selectedEdge.data?.type ?? '')}
               onChange={(e) => updateEdge(selectedEdge.id, { type: e.target.value })}
             />
+            <Input.TextArea
+              rows={2}
+              placeholder="关系描述（可选）"
+              value={String(selectedEdge.data?.description ?? '')}
+              onChange={(e) => updateEdge(selectedEdge.id, { description: e.target.value })}
+            />
             <div>
               颜色{' '}
               <ColorPicker
@@ -194,6 +203,7 @@ export function CanvasEditor() {
           </Space>
         </div>
       )}
+      <ShortcutHelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
       <CharacterModal
         open={!!editingNode}
         initial={editingNode ? (editingNode.data as unknown as CharacterData) : undefined}

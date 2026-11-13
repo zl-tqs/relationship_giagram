@@ -117,6 +117,13 @@ export function AppLayout({ children }: { children: ReactNode }) {
         <div style={{ marginTop: 8 }}>
           <ImportProjectButton block />
         </div>
+        <Button
+          block
+          style={{ marginTop: 8 }}
+          onClick={() => requestLeave(() => navigate('/analysis'))}
+        >
+          AI 提取小说
+        </Button>
         <List
           size="small"
           style={{ marginTop: 8, flex: 1, overflow: 'auto' }}

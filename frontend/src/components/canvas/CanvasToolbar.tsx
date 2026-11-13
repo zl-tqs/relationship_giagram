@@ -2,7 +2,11 @@ import { Button, Space } from 'antd';
 import { useCanvasStore } from '../../stores/canvasStore';
 import { exportPng, exportJson } from '../../core/export/exporters';
 
-export function CanvasToolbar() {
+interface Props {
+  onOpenHelp?: () => void;
+}
+
+export function CanvasToolbar({ onOpenHelp }: Props) {
   const addCharacter = useCanvasStore((s) => s.addCharacter);
   const undo = useCanvasStore((s) => s.undo);
   const redo = useCanvasStore((s) => s.redo);
@@ -27,6 +31,7 @@ export function CanvasToolbar() {
       <Button onClick={redo} disabled={!canRedo}>恢复</Button>
       <Button onClick={onExportPng}>导出 PNG</Button>
       <Button onClick={onExportJson}>导出 JSON</Button>
+      {onOpenHelp && <Button onClick={onOpenHelp}>快捷键</Button>}
     </Space>
   );
 }

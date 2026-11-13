@@ -12,4 +12,5 @@ export const KEYMAP = {
   reverse: 'r',
   selectAll: 'mod+a',
   cancel: 'escape',
+  help: ['mod+slash', 'shift+slash'],
 } as const;

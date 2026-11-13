@@ -74,6 +74,7 @@ export function HomePage() {
         <Space>
           <Typography.Text type="secondary">{user?.nickname ?? '访客'}</Typography.Text>
           <ImportProjectButton />
+          <Button onClick={() => navigate('/analysis')}>AI 提取小说</Button>
           <Button onClick={onLogout}>退出登录</Button>
           <Button type="primary" onClick={onCreate}>新建项目</Button>
         </Space>

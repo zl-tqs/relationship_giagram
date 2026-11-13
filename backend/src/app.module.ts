@@ -8,6 +8,7 @@ import { UsersModule } from './users/users.module.js';
 import { ProjectsModule } from './projects/projects.module.js';
 import { CanvasesModule } from './canvases/canvases.module.js';
 import { SnapshotsModule } from './snapshots/snapshots.module.js';
+import { AnalysisModule } from './analysis/analysis.module.js';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { SnapshotsModule } from './snapshots/snapshots.module.js';
     ProjectsModule,
     CanvasesModule,
     SnapshotsModule,
+    AnalysisModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -5,6 +5,7 @@ import { RequireAuth } from './components/auth/RequireAuth';
 const LoginPage = lazy(() => import('./pages/LoginPage').then((m) => ({ default: m.LoginPage })));
 const HomePage = lazy(() => import('./pages/HomePage').then((m) => ({ default: m.HomePage })));
 const WorkspacePage = lazy(() => import('./pages/WorkspacePage').then((m) => ({ default: m.WorkspacePage })));
+const AnalysisPage = lazy(() => import('./pages/AnalysisPage').then((m) => ({ default: m.AnalysisPage })));
 
 function PageFallback() {
   return <div style={{ display: 'grid', placeItems: 'center', minHeight: '100vh' }}>加载中…</div>;
@@ -21,6 +22,14 @@ const router = createBrowserRouter([
     element: (
       <RequireAuth>
         {withFallback(<WorkspacePage />)}
+      </RequireAuth>
+    ),
+  },
+  {
+    path: '/analysis',
+    element: (
+      <RequireAuth>
+        {withFallback(<AnalysisPage />)}
       </RequireAuth>
     ),
   },
