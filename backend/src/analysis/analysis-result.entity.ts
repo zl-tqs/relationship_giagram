@@ -9,7 +9,7 @@ export class AnalysisResult {
   @PrimaryColumn({ name: 'job_id', type: 'uuid' })
   jobId: string;
 
-  @OneToOne(() => AnalysisJob, (job) => job.result, { onDelete: 'CASCADE' })
+  @OneToOne(() => AnalysisJob, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'job_id' })
   job: AnalysisJob;
 

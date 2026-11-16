@@ -1,9 +1,8 @@
 import {
-  Column, CreateDateColumn, DeleteDateColumn, Entity, Index, OneToOne,
+  Column, CreateDateColumn, DeleteDateColumn, Entity, Index,
   PrimaryGeneratedColumn, UpdateDateColumn,
 } from 'typeorm';
 import type { StructuredAnalysisData } from './analysis.types.js';
-import { AnalysisResult } from './analysis-result.entity.js';
 
 const bigintNumber = {
   to: (value: number) => value,
@@ -58,7 +57,4 @@ export class AnalysisJob {
 
   @DeleteDateColumn({ name: 'deleted_at', type: 'timestamptz', nullable: true })
   deletedAt: Date | null;
-
-  @OneToOne(() => AnalysisResult, (result) => result.job)
-  result?: AnalysisResult;
 }
