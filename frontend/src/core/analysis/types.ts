@@ -4,6 +4,7 @@ export interface CharacterCandidate {
   name: string;
   count: number;
   confidence: CandidateConfidence;
+  aliases?: string[];
 }
 
 export interface Cooccurrence {

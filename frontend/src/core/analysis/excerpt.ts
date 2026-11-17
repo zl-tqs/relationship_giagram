@@ -4,9 +4,24 @@ interface ExcerptOptions {
 }
 
 function applyReplacements(text: string, replacements: Record<string, string>) {
+  const canonicalNames = [...new Set(Object.values(replacements))]
+    .filter(Boolean)
+    .sort((left, right) => right.length - left.length);
+  const placeholders = new Map<string, string>();
   let result = text;
+
+  canonicalNames.forEach((name, index) => {
+    const token = `\u0000${index}\u0000`;
+    placeholders.set(token, name);
+    result = result.split(name).join(token);
+  });
+
   for (const [from, to] of Object.entries(replacements).sort((a, b) => b[0].length - a[0].length)) {
     if (from && to && from !== to) result = result.split(from).join(to);
+  }
+
+  for (const [token, name] of placeholders) {
+    result = result.split(token).join(name);
   }
   return result;
 }

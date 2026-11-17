@@ -40,6 +40,18 @@ export function CanvasEditor() {
   const [searchQuery, setSearchQuery] = useState('');
   const [helpOpen, setHelpOpen] = useState(false);
   const flowRef = useRef<ReactFlowInstance | null>(null);
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
+
+  const placeCharacter = useCallback((shape: 'circle' | 'square') => {
+    const rect = wrapperRef.current?.getBoundingClientRect();
+    const viewport = flowRef.current?.getViewport() ?? useCanvasStore.getState().viewport;
+    addCharacter(
+      shape,
+      rect && rect.width > 0 && rect.height > 0
+        ? { viewport, width: rect.width, height: rect.height }
+        : undefined,
+    );
+  }, [addCharacter]);
 
   const editingNode = nodes.find((n) => n.id === editingNodeId);
   const selectedEdge = edges.find((e) => e.id === selectedEdgeId);
@@ -51,7 +63,7 @@ export function CanvasEditor() {
 
   useHotkeys(KEYMAP.undo, () => undo());
   useHotkeys(KEYMAP.redo, () => redo());
-  useHotkeys(KEYMAP.newCharacter, () => addCharacter('circle'));
+  useHotkeys(KEYMAP.newCharacter, () => placeCharacter('circle'), [placeCharacter]);
   useHotkeys(KEYMAP.search, () => setSearchOpen((open) => !open), { preventDefault: true });
   useHotkeys(KEYMAP.help, () => setHelpOpen(true), { preventDefault: true });
   useHotkeys(KEYMAP.zoomIn, () => flowRef.current?.zoomIn({ duration: 200 }), { preventDefault: true });
@@ -104,7 +116,7 @@ export function CanvasEditor() {
   }, []);
 
   return (
-    <div style={{ width: '100%', height: '100%' }}>
+    <div ref={wrapperRef} style={{ width: '100%', height: '100%' }}>
       <ReactFlow
         nodes={search.nodes}
         edges={displayEdges}
@@ -132,7 +144,7 @@ export function CanvasEditor() {
         <Background />
         <Controls />
       </ReactFlow>
-      <CanvasToolbar onOpenHelp={() => setHelpOpen(true)} />
+      <CanvasToolbar onAddCharacter={placeCharacter} onOpenHelp={() => setHelpOpen(true)} />
       <SearchPanel
         open={searchOpen}
         query={searchQuery}

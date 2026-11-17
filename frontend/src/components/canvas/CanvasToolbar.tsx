@@ -3,11 +3,13 @@ import { useCanvasStore } from '../../stores/canvasStore';
 import { exportPng, exportJson } from '../../core/export/exporters';
 
 interface Props {
+  onAddCharacter?: (shape: 'circle' | 'square') => void;
   onOpenHelp?: () => void;
 }
 
-export function CanvasToolbar({ onOpenHelp }: Props) {
+export function CanvasToolbar({ onAddCharacter, onOpenHelp }: Props) {
   const addCharacter = useCanvasStore((s) => s.addCharacter);
+  const handleAddCharacter = onAddCharacter ?? addCharacter;
   const undo = useCanvasStore((s) => s.undo);
   const redo = useCanvasStore((s) => s.redo);
   const canUndo = useCanvasStore((s) => s.past.length > 0);
@@ -25,8 +27,8 @@ export function CanvasToolbar({ onOpenHelp }: Props) {
 
   return (
     <Space style={{ position: 'absolute', top: 8, left: 8, zIndex: 10 }}>
-      <Button onClick={() => addCharacter('circle')}>+ 圆形角色</Button>
-      <Button onClick={() => addCharacter('square')}>+ 方形角色</Button>
+      <Button onClick={() => handleAddCharacter('circle')}>+ 圆形角色</Button>
+      <Button onClick={() => handleAddCharacter('square')}>+ 方形角色</Button>
       <Button onClick={undo} disabled={!canUndo}>撤销</Button>
       <Button onClick={redo} disabled={!canRedo}>恢复</Button>
       <Button onClick={onExportPng}>导出 PNG</Button>

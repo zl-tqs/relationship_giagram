@@ -2,6 +2,21 @@ import { describe, expect, it } from 'vitest';
 import { preprocessNovel } from './preprocess';
 
 describe('preprocessNovel', () => {
+  it('别名合并后共现使用规范名', () => {
+    const text = [
+      '猪八戒说道：“师父，俺老猪饿了。”',
+      '孙悟空笑道：“八戒，莫要乱说。”',
+    ].join('\n');
+    const data = new TextEncoder().encode(text).buffer;
+    const result = preprocessNovel(data);
+    const pig = result.candidates.find((candidate) => candidate.name === '猪八戒');
+    expect(pig?.aliases).toContain('八戒');
+    expect(result.cooccurrences.some((pair) => (
+      [pair.a, pair.b].includes('猪八戒') && [pair.a, pair.b].includes('孙悟空')
+    ))).toBe(true);
+    expect(result.cooccurrences.some((pair) => [pair.a, pair.b].includes('八戒'))).toBe(false);
+  });
+
   it('解码后统计章节、人物与共现', () => {
     const text = [
       '第一章 初见',

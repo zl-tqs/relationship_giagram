@@ -6,6 +6,7 @@ import { useProjectStore } from '../../stores/projectStore';
 import { useAuthStore } from '../../stores/authStore';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { toApiError } from '../../api/client';
+import { pickNextProjectAfterDelete } from '../../core/projects/navigation';
 import { deleteDraft } from '../../core/save/drafts';
 import {
   clearManualSaved,
@@ -74,13 +75,21 @@ export function AppLayout({ children }: { children: ReactNode }) {
       okButtonProps: { danger: true },
       onOk: async () => {
         try {
+          const next = pickNextProjectAfterDelete(recent, item.id, projectId);
           await remove(item.id);
           await deleteDraft(user?.id ?? 'anonymous', item.id);
           clearManualSaved(item.id);
           clearOriginalFileName(item.id);
           clearProjectCreatedThisSession(item.id);
-          if (item.id === projectId) window.location.assign('/');
           message.success('已删除');
+          if (item.id === projectId) {
+            if (next) {
+              window.location.assign(`/project/${next.id}`);
+            } else {
+              const created = await create('未命名项目');
+              window.location.assign(`/project/${created.id}`);
+            }
+          }
         } catch (e) {
           message.error(toApiError(e).message);
         }

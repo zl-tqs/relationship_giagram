@@ -1,60 +1,355 @@
-import type { CharacterCandidate, Cooccurrence } from './types';
+import {
+  ACTION_PATTERN, BOUNDARY_AFTER_CHARS, COLLECTIVE_PATTERN, COMMON_SURNAMES,
+  COMPOUND_SURNAMES, CONJUNCTION_PATTERN, INVALID_END_CHARS, INVALID_START_CHARS,
+  NAME_BLOCKED_INTERNAL, NAME_START_EXCEPTIONS, OBJECT_PATTERN, OBJECT_WORDS,
+  PREPOSITION_PATTERN, ROLE_WORDS, SCAN_GIVEN_END_CHARS, SHORT_PREFIX_SUFFIXES,
+  SINGLE_SURNAMES, SPECIAL_PREFIX_BLACKLIST, SPECIAL_PREFIX_STOP_CHARS,
+  SPECIAL_SUFFIXES, SPEAKER_PATTERN, STOP_WORDS, WEAK_SURNAMES,
+} from './lexicon';
+import type { CandidateConfidence, CharacterCandidate, Cooccurrence } from './types';
 
-const SINGLE_SURNAMES = new Set(
-  '赵钱孙李周吴郑王冯陈褚卫蒋沈韩杨朱秦尤许何吕施张孔曹严华金魏陶姜戚谢邹喻柏水窦章云苏潘葛奚范彭郎鲁韦昌马苗凤花方俞任袁柳鲍史唐费廉岑薛雷贺倪汤滕殷罗毕郝邬安常乐于时傅皮卞齐康伍余元卜顾孟平黄和穆萧尹姚邵湛汪祁毛禹狄米贝明臧计伏成戴谈宋茅庞熊纪舒屈项祝董梁杜阮蓝闵席季麻强贾路娄危江童颜郭梅盛林刁钟徐邱骆高夏蔡田樊胡凌霍虞万支柯昝管卢莫经房裘缪干解应宗丁宣邓郁单杭洪包诸左石崔吉龚程嵇邢滑裴陆荣翁荀羊於惠甄曲家封芮羿储靳汲邴糜松井段富巫乌焦巴弓牧隗山谷车侯宓蓬全郗班仰秋仲伊宫宁仇栾暴甘钭厉戎祖武符刘景詹束龙叶幸司韶郜黎蓟薄印宿白怀蒲邰从鄂索咸籍赖卓蔺屠蒙池乔阴胥能苍双闻莘党翟谭贡劳逄姬申扶堵冉宰郦雍郤璩桑桂濮牛寿通边扈燕冀郏浦尚农温别庄晏柴瞿阎充慕连茹习宦艾鱼容向古易慎戈廖庾终暨居衡步都耿满弘匡国文寇广禄阙东欧殳沃利蔚越夔隆师巩厍聂晁勾敖融冷訾辛阚那简饶空曾毋沙乜养鞠须丰巢关蒯相查后荆红游竺权逯盖益桓公',
-);
+export const DEFAULT_CANDIDATE_LIMIT = 120;
 
-const COMPOUND_SURNAMES = [
-  '欧阳', '司马', '上官', '诸葛', '东方', '令狐', '独孤', '慕容', '南宫', '西门',
-  '夏侯', '尉迟', '皇甫', '长孙', '宇文', '司徒', '公孙', '闻人', '轩辕', '端木',
-  '百里', '东郭', '南门', '呼延', '羊舌', '微生', '梁丘', '左丘', '东门',
-];
+type Source =
+  | 'chapter' | 'speaker' | 'action' | 'object' | 'preposition' | 'conjunction'
+  | 'special' | 'scan';
 
-const STOP_WORDS = new Set([
-  '时候', '时间', '世界', '事情', '东西', '地方', '地上', '地下', '天下', '天空', '天气',
-  '问题', '方法', '方面', '方式', '方向', '方案', '方便', '旁人', '旁边', '里面', '里头',
-  '外面', '上头', '下面', '前面', '后面', '左手', '右手', '左臂', '右臂', '左右', '南方',
-  '北方', '西方', '春天', '夏天', '秋天', '冬天', '今日', '今天', '明日', '明天', '昨日',
-  '昨天', '今年', '明年', '去年', '当时', '当年', '晚上', '早上', '上午', '下午', '中午',
-  '半夜', '黄金', '黄沙', '黄昏', '白天', '白日', '白云', '白发', '白衣', '高手', '高兴',
-  '高速', '高大', '高山', '高台', '江南', '江湖', '林中', '林间', '石头', '石板', '王宫',
-  '王国', '王朝', '李子', '毛病', '史书', '史册', '唐突', '后果', '度量', '庞大', '安静',
-  '安全', '周身', '周围', '余地', '余光', '元宝', '平凡', '平常', '和平', '何必', '何况',
-  '何时', '何处', '何人', '如何', '为何', '于是', '由于', '马虎', '马上', '风景', '风波',
-  '风格', '花白', '花园', '花丛', '白净', '白昼', '百家', '万家', '万里', '千里', '百姓',
-  '诸位', '诸多', '左右为难', '张望', '张开', '张罗', '苏醒', '胡同', '罗盘', '程度', '秋千',
-]);
-
-const INVALID_END_CHARS = new Set(
-  '说道问答笑哭喊叫走跑站坐起来去回进出开关看听想知觉了着过的地得和与同跟向对把被将在是有无没就都也又还再才只已曾正刚却但而或及等让使给为以于从到至之其此这那哪要会能可上下里外前后中内旁边处时候分秒年月日个只些位名次头尾手脚身心眼口耳脸声气力命事情物人家门宫城村国众者并独便仍竟忙顿随互更最太皆均莫勿若似像',
-);
-
-function givenNameLength(name: string) {
-  const surnameLength = COMPOUND_SURNAMES.some((surname) => name.startsWith(surname)) ? 2 : 1;
-  return name.length - surnameLength;
+interface CandidateInfo {
+  name: string;
+  count: number;
+  sources: Set<Source>;
+  aliases: Set<string>;
 }
 
-const SPEECH_PATTERN = /说道|笑道|问道|答道|喝道|叹道|沉声道|冷声道|低声道|大声道|轻声道|开口道|回答道|喊道|叫道|说|道|问|答|笑/g;
-
-const TITLE_PATTERN = /长老|掌门|师父|师尊|师兄|师姐|师弟|师妹|前辈|大人|公子|姑娘|小姐|将军|陛下|王爷|皇后|公主|先生/g;
+const SOURCE_SCORE: Record<Source, number> = {
+  chapter: 5,
+  speaker: 6,
+  action: 2,
+  object: 2,
+  preposition: 2,
+  conjunction: 1,
+  special: 3,
+  scan: 1,
+};
 
 const CONFIDENCE_ORDER = { high: 0, medium: 1, low: 2 } as const;
+const NAME_FUNCTION_CHARS = /[的了着过和与跟同这那其我你他她它谁某几]/;
 
 function isChinese(value: string) {
   return /^[\u4e00-\u9fa5]+$/.test(value);
 }
 
-function startsWithSurname(name: string) {
-  if (COMPOUND_SURNAMES.some((surname) => name.startsWith(surname))) return true;
-  return SINGLE_SURNAMES.has(name[0]);
+function surnameWeight(name: string) {
+  const firstTwo = name.slice(0, 2);
+  if (COMPOUND_SURNAMES.includes(firstTwo)) return 0.9;
+  const first = name[0];
+  if (WEAK_SURNAMES.has(first)) return 0.1;
+  if (COMMON_SURNAMES.has(first)) return 1;
+  if (SINGLE_SURNAMES.has(first)) return 0.6;
+  return 0;
 }
 
-function isCandidate(name: string) {
-  if (name.length < 2 || name.length > 4) return false;
+function matchingRoleSuffix(name: string) {
+  return SPECIAL_SUFFIXES.find((suffix) => name.length > suffix.length && name.endsWith(suffix)) ?? null;
+}
+
+function hasInvalidRoleShape(name: string) {
+  const suffix = matchingRoleSuffix(name);
+  if (!suffix) return false;
+  const prefixLength = name.length - suffix.length;
+  return SHORT_PREFIX_SUFFIXES.has(suffix) ? prefixLength < 1 : prefixLength < 2;
+}
+
+function isNonPersonWord(name: string) {
+  return STOP_WORDS.has(name)
+    || ROLE_WORDS.has(name)
+    || OBJECT_WORDS.has(name)
+    || SPECIAL_SUFFIXES.includes(name)
+    || COLLECTIVE_PATTERN.test(name);
+}
+
+function isValidNameShape(name: string) {
+  const special = Boolean(matchingRoleSuffix(name));
+  const compound = COMPOUND_SURNAMES.some((surname) => name.startsWith(surname));
+  const maxLength = special ? 7 : compound ? 4 : 3;
+  if (name.length < 2 || name.length > maxLength) return false;
   if (!isChinese(name)) return false;
-  if (STOP_WORDS.has(name)) return false;
-  if (!startsWithSurname(name)) return false;
-  return !INVALID_END_CHARS.has(name[name.length - 1]);
+  if (special) {
+    if (SPECIAL_PREFIX_BLACKLIST.has(name[0])) return false;
+  } else if (INVALID_START_CHARS.has(name[0]) && !NAME_START_EXCEPTIONS.has(name)) {
+    return false;
+  }
+  if (INVALID_END_CHARS.has(name[name.length - 1])) return false;
+  if (NAME_FUNCTION_CHARS.test(name) || NAME_BLOCKED_INTERNAL.test(name)) return false;
+  return !isNonPersonWord(name) && !hasInvalidRoleShape(name);
+}
+
+function isStrongName(name: string) {
+  return isValidNameShape(name);
+}
+
+function isScannedName(name: string) {
+  if (/[一二三四五六七八九十]$/.test(name) && name.length > 2) return false;
+  return isValidNameShape(name)
+    && surnameWeight(name) >= 0.5
+    && SCAN_GIVEN_END_CHARS.has(name[name.length - 1]);
+}
+
+function isSpecialName(name: string) {
+  if (!matchingRoleSuffix(name)) return false;
+  if (name.length < 3 || name.length > 7 || !isChinese(name)) return false;
+  if (SPECIAL_PREFIX_BLACKLIST.has(name[0])) return false;
+  if (INVALID_END_CHARS.has(name[name.length - 1])) return false;
+  if (NAME_FUNCTION_CHARS.test(name) || NAME_BLOCKED_INTERNAL.test(name)) return false;
+  return !isNonPersonWord(name) && !hasInvalidRoleShape(name);
+}
+
+function isBoundaryAfter(text: string, endIndex: number) {
+  if (endIndex >= text.length) return true;
+  const next = text[endIndex];
+  return !isChinese(next) || BOUNDARY_AFTER_CHARS.has(next);
+}
+
+function pickLongestValidSuffix(raw: string, validator: (name: string) => boolean, maxLength = 6) {
+  for (let length = Math.min(maxLength, raw.length); length >= 2; length -= 1) {
+    const name = raw.slice(raw.length - length);
+    if (validator(name)) return name;
+  }
+  return null;
+}
+
+function pickNameAfter(
+  raw: string,
+  text: string,
+  startIndex: number,
+  knownNames: string[],
+) {
+  for (const known of [...knownNames].sort((left, right) => right.length - left.length)) {
+    if (raw.startsWith(known) && isBoundaryAfter(text, startIndex + known.length)) return known;
+  }
+  for (let offset = 0; offset <= 1 && offset <= raw.length - 2; offset += 1) {
+    for (let length = 2; length <= Math.min(6, raw.length - offset); length += 1) {
+      const name = raw.slice(offset, offset + length);
+      if (isStrongName(name) && isBoundaryAfter(text, startIndex + offset + length)) return name;
+    }
+  }
+  return null;
+}
+
+function stripQuotedText(text: string) {
+  return text.replace(/“[^”]*”|「[^」]*」|『[^』]*』|"[^"]*"/g, (value) => ' '.repeat(value.length));
+}
+
+function addCandidate(
+  candidates: Map<string, CandidateInfo>,
+  name: string,
+  source: Source,
+) {
+  const existing = candidates.get(name);
+  if (existing) {
+    existing.count += 1;
+    existing.sources.add(source);
+    return;
+  }
+  candidates.set(name, { name, count: 1, sources: new Set([source]), aliases: new Set() });
+}
+
+function extractSpeakers(text: string, candidates: Map<string, CandidateInfo>) {
+  SPEAKER_PATTERN.lastIndex = 0;
+  let match = SPEAKER_PATTERN.exec(text);
+  while (match) {
+    const name = pickLongestValidSuffix(match[1], isStrongName);
+    if (name) addCandidate(candidates, name, 'speaker');
+    match = SPEAKER_PATTERN.exec(text);
+  }
+}
+
+function extractBeforeVerbs(text: string, candidates: Map<string, CandidateInfo>) {
+  const narration = stripQuotedText(text);
+  ACTION_PATTERN.lastIndex = 0;
+  let match = ACTION_PATTERN.exec(narration);
+  while (match) {
+    const before = narration.slice(Math.max(0, match.index - 6), match.index);
+    const name = pickLongestValidSuffix(before, isStrongName);
+    if (name) addCandidate(candidates, name, 'action');
+    match = ACTION_PATTERN.exec(narration);
+  }
+}
+
+function extractAfterVerbs(
+  text: string,
+  candidates: Map<string, CandidateInfo>,
+  pattern: RegExp,
+  source: Source,
+) {
+  const narration = stripQuotedText(text);
+  const knownNames = [...candidates.keys()];
+  pattern.lastIndex = 0;
+  let match = pattern.exec(narration);
+  while (match) {
+    const start = match.index + match[0].length;
+    const raw = narration.slice(start, start + 6);
+    const name = pickNameAfter(raw, narration, start, knownNames);
+    if (name) addCandidate(candidates, name, source);
+    match = pattern.exec(narration);
+  }
+}
+
+function extractSpecialNames(text: string, candidates: Map<string, CandidateInfo>) {
+  const pattern = new RegExp(`(${SPECIAL_SUFFIXES.join('|')})`, 'g');
+  let match = pattern.exec(text);
+  while (match) {
+    const suffix = match[1];
+    const suffixEnd = match.index + suffix.length;
+    if (!isBoundaryAfter(text, suffixEnd)) {
+      match = pattern.exec(text);
+      continue;
+    }
+
+    let prefix = '';
+    for (let cursor = match.index - 1; cursor >= 0 && prefix.length < 4; cursor -= 1) {
+      const char = text[cursor];
+      if (!isChinese(char) || SPECIAL_PREFIX_STOP_CHARS.has(char)) break;
+      prefix = `${char}${prefix}`;
+    }
+
+    for (let length = prefix.length; length >= 1; length -= 1) {
+      const name = `${prefix.slice(prefix.length - length)}${suffix}`;
+      if (isSpecialName(name)) {
+        addCandidate(candidates, name, 'special');
+        break;
+      }
+    }
+    match = pattern.exec(text);
+  }
+}
+
+function isInsideKnownName(text: string, index: number, knownNames: string[]) {
+  for (const known of knownNames) {
+    for (let offset = 1; offset < known.length; offset += 1) {
+      if (index - offset >= 0 && text.startsWith(known.slice(offset), index - offset)) return true;
+    }
+  }
+  return false;
+}
+
+function scanSurnames(
+  text: string,
+  candidates: Map<string, CandidateInfo>,
+  knownNames: string[],
+) {
+  for (let index = 0; index < text.length; index += 1) {
+    const compound = COMPOUND_SURNAMES.find((surname) => text.startsWith(surname, index));
+    const surnameLength = compound ? compound.length : SINGLE_SURNAMES.has(text[index]) ? 1 : 0;
+    if (!surnameLength) continue;
+    if (isInsideKnownName(text, index, knownNames)) continue;
+
+    const probe = text.slice(index, index + surnameLength + 2);
+    if (surnameWeight(probe) < 0.5) continue;
+
+    for (let givenLength = 2; givenLength >= 1; givenLength -= 1) {
+      const name = text.slice(index, index + surnameLength + givenLength);
+      if (name.length !== surnameLength + givenLength || !isScannedName(name)) continue;
+      const next = text[index + name.length] ?? '';
+      if (/[一二三四五六七八九十]$/.test(name) && '人行个位名众起路边只次年月日'.includes(next)) {
+        continue;
+      }
+      addCandidate(candidates, name, 'scan');
+      index += name.length - 1;
+      break;
+    }
+  }
+}
+
+function absorbShorterNames(candidates: Map<string, CandidateInfo>) {
+  const entries = [...candidates.values()].sort(
+    (left, right) => right.name.length - left.name.length || right.count - left.count,
+  );
+  const removed = new Set<string>();
+
+  for (let i = 0; i < entries.length; i += 1) {
+    const longer = entries[i];
+    if (removed.has(longer.name)) continue;
+    for (let j = i + 1; j < entries.length; j += 1) {
+      const shorter = entries[j];
+      if (removed.has(shorter.name) || !longer.name.includes(shorter.name)) continue;
+      const longerTrusted = longer.sources.has('speaker')
+        || longer.sources.has('special')
+        || longer.sources.has('chapter')
+        || longer.count >= shorter.count;
+      if (!longerTrusted) continue;
+      const suffixMatch = longer.name.endsWith(shorter.name);
+      const strongShorter = shorter.sources.has('speaker')
+        || shorter.sources.has('special')
+        || shorter.sources.has('chapter');
+      if (suffixMatch || strongShorter) {
+        longer.aliases.add(shorter.name);
+        for (const alias of shorter.aliases) longer.aliases.add(alias);
+      }
+      longer.count = Math.max(longer.count, shorter.count);
+      for (const source of shorter.sources) longer.sources.add(source);
+      removed.add(shorter.name);
+    }
+  }
+
+  for (const name of removed) candidates.delete(name);
+  for (const candidate of candidates.values()) {
+    if (candidate.aliases.has(candidate.name)) candidate.aliases.delete(candidate.name);
+  }
+}
+
+function expandSuffixAliases(text: string, candidates: Map<string, CandidateInfo>) {
+  for (const candidate of candidates.values()) {
+    if (candidate.name.length < 3) continue;
+    const trusted = candidate.sources.has('speaker')
+      || candidate.sources.has('special')
+      || candidate.sources.has('chapter');
+    if (!trusted) continue;
+    const suffix = candidate.name.slice(-2);
+    if (isNonPersonWord(suffix) || INVALID_END_CHARS.has(suffix[1]) || INVALID_START_CHARS.has(suffix[0])) {
+      continue;
+    }
+    const count = countOccurrences(text, suffix);
+    if (count >= 2 || candidate.sources.has('speaker')) {
+      candidate.aliases.add(suffix);
+    }
+  }
+}
+
+function applyChapterBoost(text: string, candidates: Map<string, CandidateInfo>) {
+  const titles = text.match(/^\s*(?:第[0-9零一二三四五六七八九十百千万两〇]+[章回节卷].*|Chapter\s+\d+.*)\s*$/gim) ?? [];
+  if (titles.length === 0) return;
+  for (const candidate of candidates.values()) {
+    if (titles.some((title) => title.includes(candidate.name))) candidate.sources.add('chapter');
+  }
+}
+
+function buildSentencePartners(text: string, names: string[]) {
+  const partners = new Map<string, Set<string>>();
+  const sentences = text
+    .replace(/\r\n?/g, '\n')
+    .split(/[。！？!?…\n]/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
+
+  for (const sentence of sentences) {
+    const present = names.filter((name) => sentence.includes(name));
+    for (let i = 0; i < present.length; i += 1) {
+      for (let j = i + 1; j < present.length; j += 1) {
+        if (!partners.has(present[i])) partners.set(present[i], new Set());
+        if (!partners.has(present[j])) partners.set(present[j], new Set());
+        partners.get(present[i])!.add(present[j]);
+        partners.get(present[j])!.add(present[i]);
+      }
+    }
+  }
+  return partners;
+}
+
+function confidenceOf(score: number): CandidateConfidence {
+  if (score >= 6) return 'high';
+  if (score >= 3) return 'medium';
+  return 'low';
 }
 
 function countOccurrences(text: string, name: string) {
@@ -62,88 +357,71 @@ function countOccurrences(text: string, name: string) {
   return text.match(new RegExp(escaped, 'g'))?.length ?? 0;
 }
 
-function namesBeforeMatches(text: string, pattern: RegExp) {
-  const counts = new Map<string, number>();
-  pattern.lastIndex = 0;
-  let match = pattern.exec(text);
-  while (match) {
-    const before = text.slice(Math.max(0, match.index - 4), match.index);
-    for (let length = Math.min(4, before.length); length >= 2; length -= 1) {
-      const name = before.slice(before.length - length);
-      if (isCandidate(name)) {
-        counts.set(name, (counts.get(name) ?? 0) + 1);
-        break;
-      }
-    }
-    match = pattern.exec(text);
-  }
-  return counts;
+function scoreOf(info: CandidateInfo, text: string, partners: Set<string> | undefined) {
+  let score = 0;
+  for (const source of info.sources) score += SOURCE_SCORE[source];
+  const count = countOccurrences(text, info.name);
+  if (count >= 10) score += 3;
+  else if (count >= 5) score += 2;
+  else if (count >= 3) score += 1;
+  const weight = surnameWeight(info.name);
+  if (weight >= 0.8) score += 2;
+  else if (weight >= 0.5) score += 1;
+  const partnerCount = partners?.size ?? 0;
+  if (partnerCount >= 5) score += 2;
+  else if (partnerCount >= 3) score += 1;
+  return score;
 }
 
-function scanSurnames(text: string) {
-  const counts = new Map<string, number>();
-  for (let index = 0; index < text.length; index += 1) {
-    const compound = COMPOUND_SURNAMES.find((surname) => text.startsWith(surname, index));
-    const surnameLength = compound ? compound.length : SINGLE_SURNAMES.has(text[index]) ? 1 : 0;
-    if (!surnameLength) continue;
-
-    let chosen = '';
-    for (let givenLength = 2; givenLength >= 1; givenLength -= 1) {
-      const name = text.slice(index, index + surnameLength + givenLength);
-      if (name.length === surnameLength + givenLength && isCandidate(name)) {
-        chosen = name;
-        break;
-      }
-    }
-    if (!chosen) continue;
-    counts.set(chosen, (counts.get(chosen) ?? 0) + 1);
-    index += chosen.length - 1;
-  }
-  return counts;
-}
-
-function mergeCounts(
+export function extractCharacterCandidates(
   text: string,
-  strong: Map<string, number>,
-  scanned: Map<string, number>,
-  threshold: number,
-) {
-  const names = new Set<string>([...strong.keys()]);
-  for (const [name, count] of scanned) {
-    if (count >= threshold) names.add(name);
+  limit = DEFAULT_CANDIDATE_LIMIT,
+): CharacterCandidate[] {
+  const candidates = new Map<string, CandidateInfo>();
+  extractSpeakers(text, candidates);
+  extractBeforeVerbs(text, candidates);
+  extractAfterVerbs(text, candidates, OBJECT_PATTERN, 'object');
+  extractAfterVerbs(text, candidates, PREPOSITION_PATTERN, 'preposition');
+  extractAfterVerbs(text, candidates, CONJUNCTION_PATTERN, 'conjunction');
+  extractSpecialNames(text, candidates);
+
+  scanSurnames(text, candidates, [...candidates.keys()]);
+  applyChapterBoost(text, candidates);
+  absorbShorterNames(candidates);
+  expandSuffixAliases(text, candidates);
+
+  for (const [name, info] of candidates) {
+    if (!isValidNameShape(name) || isNonPersonWord(name)) {
+      candidates.delete(name);
+      continue;
+    }
+    const onlyWeakSources = [...info.sources].every(
+      (source) => ['scan', 'action', 'object', 'preposition', 'conjunction'].includes(source),
+    );
+    if (onlyWeakSources && info.count < (text.length < 500 ? 1 : 2)) {
+      candidates.delete(name);
+    }
   }
-  const candidates: CharacterCandidate[] = [];
-  for (const name of names) {
-    const count = Math.max(strong.get(name) ?? 0, scanned.get(name) ?? 0, countOccurrences(text, name));
-    candidates.push({
+
+  const names = [...candidates.keys()];
+  const partners = buildSentencePartners(text, names);
+  const scored = names.map((name) => {
+    const info = candidates.get(name)!;
+    const score = scoreOf(info, text, partners.get(name));
+    return {
       name,
-      count,
-      confidence: strong.has(name) ? 'high' : count >= 3 ? 'medium' : 'low',
-    });
-  }
-  return candidates;
-}
-
-export function extractCharacterCandidates(text: string, limit = 60): CharacterCandidate[] {
-  const strong = new Map<string, number>();
-  for (const source of [namesBeforeMatches(text, SPEECH_PATTERN), namesBeforeMatches(text, TITLE_PATTERN)]) {
-    for (const [name, count] of source) strong.set(name, (strong.get(name) ?? 0) + count);
-  }
-
-  const scanned = scanSurnames(text);
-  const threshold = text.length < 500 ? 1 : 3;
-  const candidates = mergeCounts(text, strong, scanned, threshold).filter((item) => {
-    if (item.confidence === 'high') return true;
-    const scannedCount = scanned.get(item.name) ?? 0;
-    return givenNameLength(item.name) >= 2 ? scannedCount >= 3 : scannedCount >= threshold;
+      count: Math.max(info.count, countOccurrences(text, name)),
+      confidence: confidenceOf(score),
+      aliases: [...info.aliases].sort((left, right) => right.length - left.length),
+    };
   });
 
-  return candidates
-    .sort((a, b) => {
-      const byConfidence = CONFIDENCE_ORDER[a.confidence] - CONFIDENCE_ORDER[b.confidence];
+  return scored
+    .sort((left, right) => {
+      const byConfidence = CONFIDENCE_ORDER[left.confidence] - CONFIDENCE_ORDER[right.confidence];
       if (byConfidence !== 0) return byConfidence;
-      if (b.count !== a.count) return b.count - a.count;
-      return a.name.localeCompare(b.name, 'zh-Hans-CN');
+      if (right.count !== left.count) return right.count - left.count;
+      return left.name.localeCompare(right.name, 'zh-Hans-CN');
     })
     .slice(0, limit);
 }

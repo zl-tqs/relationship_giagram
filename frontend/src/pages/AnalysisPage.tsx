@@ -11,6 +11,7 @@ import {
 } from '../api/analysis';
 import { saveCanvas } from '../api/canvas';
 import { toApiError } from '../api/client';
+import { mergeCandidateRows, type MergeableCandidate } from '../core/analysis/candidates';
 import { buildExcerpt } from '../core/analysis/excerpt';
 import { buildCanvasFromAnalysis } from '../core/analysis/graph';
 import { remapCooccurrences } from '../core/analysis/cooccurrence';
@@ -48,14 +49,7 @@ const CONFIDENCE_COLORS: Record<CandidateConfidence, string> = {
   low: 'default',
 };
 
-interface CandidateRow {
-  key: string;
-  originalName: string;
-  name: string;
-  count: number;
-  confidence: CandidateConfidence;
-  selected: boolean;
-}
+type CandidateRow = MergeableCandidate;
 
 interface CharacterRow extends AnalysisCharacter {
   key: string;
@@ -155,6 +149,7 @@ export function AnalysisPage() {
           count: candidate.count,
           confidence: candidate.confidence,
           selected: true,
+          aliases: candidate.aliases ?? [],
         })),
       );
       setProjectName(fileStem(file.name));
@@ -179,8 +174,13 @@ export function AnalysisPage() {
         count: 0,
         confidence: 'low',
         selected: true,
+        aliases: [],
       },
     ]);
+  };
+
+  const mergeCandidates = (sourceKey: string, targetKey: string) => {
+    setRows((current) => mergeCandidateRows(current, sourceKey, targetKey));
   };
 
   const updateCandidate = (key: string, patch: Partial<CandidateRow>) => {
@@ -216,8 +216,12 @@ export function AnalysisPage() {
     try {
       const replacements: Record<string, string> = {};
       for (const row of selected) {
-        if (row.originalName && row.originalName !== row.name.trim()) {
-          replacements[row.originalName] = row.name.trim();
+        const canonical = row.name.trim();
+        if (row.originalName && row.originalName !== canonical) {
+          replacements[row.originalName] = canonical;
+        }
+        for (const alias of row.aliases ?? []) {
+          if (alias && alias !== canonical) replacements[alias] = canonical;
         }
       }
       const excerpt = buildExcerpt(
@@ -694,12 +698,19 @@ export function AnalysisPage() {
                 title: '姓名',
                 dataIndex: 'name',
                 render: (_, record) => (
-                  <Input
-                    value={record.name}
-                    maxLength={20}
-                    placeholder="人物姓名"
-                    onChange={(event) => updateCandidate(record.key, { name: event.target.value })}
-                  />
+                  <div>
+                    <Input
+                      value={record.name}
+                      maxLength={20}
+                      placeholder="人物姓名"
+                      onChange={(event) => updateCandidate(record.key, { name: event.target.value })}
+                    />
+                    {!!record.aliases?.length && (
+                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                        别名：{record.aliases.join('、')}
+                      </Typography.Text>
+                    )}
+                  </div>
                 ),
               },
               { title: '出现次数', dataIndex: 'count', width: 100 },
@@ -713,17 +724,30 @@ export function AnalysisPage() {
               },
               {
                 title: '操作',
-                width: 80,
+                width: 220,
                 render: (_, record) => (
-                  <Button
-                    type="link"
-                    danger
-                    onClick={() =>
-                      setRows((current) => current.filter((row) => row.key !== record.key))
-                    }
-                  >
-                    移除
-                  </Button>
+                  <Space size={0}>
+                    <Select
+                      size="small"
+                      placeholder="合并到"
+                      style={{ width: 120 }}
+                      showSearch
+                      optionFilterProp="label"
+                      options={rows
+                        .filter((row) => row.key !== record.key && row.name.trim())
+                        .map((row) => ({ value: row.key, label: row.name.trim() }))}
+                      onChange={(targetKey) => mergeCandidates(record.key, targetKey)}
+                    />
+                    <Button
+                      type="link"
+                      danger
+                      onClick={() =>
+                        setRows((current) => current.filter((row) => row.key !== record.key))
+                      }
+                    >
+                      移除
+                    </Button>
+                  </Space>
                 ),
               },
             ]}

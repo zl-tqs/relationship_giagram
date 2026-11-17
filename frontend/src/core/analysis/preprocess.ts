@@ -1,4 +1,5 @@
 import { splitChapters } from './chapters';
+import { remapCooccurrences } from './cooccurrence';
 import { decodeNovelFile, type NovelEncoding } from './decode';
 import { buildCooccurrences, extractCharacterCandidates } from './extract';
 import type { CharacterCandidate, Cooccurrence } from './types';
@@ -15,11 +16,23 @@ export function preprocessNovel(data: ArrayBuffer): PreprocessOutcome {
   const decoded = decodeNovelFile(data);
   const chapters = splitChapters(decoded.text);
   const candidates = extractCharacterCandidates(decoded.text);
+  const aliasMap: Record<string, string> = {};
+  const allNames: string[] = [];
+  for (const candidate of candidates) {
+    allNames.push(candidate.name);
+    for (const alias of candidate.aliases ?? []) {
+      aliasMap[alias] = candidate.name;
+      allNames.push(alias);
+    }
+  }
   return {
     text: decoded.text,
     encoding: decoded.encoding,
     chapterCount: chapters.length,
     candidates,
-    cooccurrences: buildCooccurrences(decoded.text, candidates.map((item) => item.name)),
+    cooccurrences: remapCooccurrences(
+      buildCooccurrences(decoded.text, allNames),
+      aliasMap,
+    ),
   };
 }

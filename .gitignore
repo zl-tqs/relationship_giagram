@@ -6,4 +6,4 @@ target/
 *.tsbuildinfo
 .DS_Store
 /.idea
-/text_log
+/resources

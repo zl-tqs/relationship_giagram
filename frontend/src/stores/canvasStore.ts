@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { applyNodeChanges, applyEdgeChanges, type Node, type Edge, type NodeChange, type EdgeChange } from '@xyflow/react';
+import { findFreeNodePosition, type PlacementContext } from '../core/canvas/placement';
 import type { CharacterData, RelationData } from '../types';
 
 const HISTORY_LIMIT = 100;
@@ -13,7 +14,7 @@ interface CanvasStore {
   version: number;
   past: HistoryEntry[];
   future: HistoryEntry[];
-  addCharacter: (shape: 'circle' | 'square') => void;
+  addCharacter: (shape: 'circle' | 'square', placement?: PlacementContext) => void;
   addEdge: (edge: Edge) => void;
   removeNode: (id: string) => void;
   removeEdge: (id: string) => void;
@@ -55,13 +56,16 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   past: [],
   future: [],
 
-  addCharacter: (shape) => {
+  addCharacter: (shape, placement) => {
     commit(set, get);
     const id = nextNodeId(get().nodes);
+    const position = placement
+      ? findFreeNodePosition(get().nodes, placement)
+      : { x: 100 + Math.random() * 300, y: 100 + Math.random() * 200 };
     const node: Node = {
       id,
       type: 'character',
-      position: { x: 100 + Math.random() * 300, y: 100 + Math.random() * 200 },
+      position,
       data: { shape, name: '新角色', gender: '未知' },
     };
     set({ nodes: [...get().nodes, node] });
