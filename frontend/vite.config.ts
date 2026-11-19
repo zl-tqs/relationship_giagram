@@ -1,13 +1,54 @@
 /// <reference types="vitest" />
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
 import process from "node:process";
 
 const host = process.env.TAURI_DEV_HOST;
 
+function localAnalysisDebugPlugin(): Plugin {
+  return {
+    name: "local-analysis-debug",
+    apply: "serve",
+    configureServer(server) {
+      server.middlewares.use("/__debug/local-analysis", (req, res) => {
+        if (req.method !== "POST") {
+          res.statusCode = 405;
+          res.end();
+          return;
+        }
+
+        let body = "";
+        req.on("data", (chunk) => {
+          body += chunk;
+          if (body.length > 5_000_000) req.destroy();
+        });
+        req.on("end", () => {
+          try {
+            const outputDir = resolve(process.cwd(), "..", "resources", "text_log");
+            const snapshot = JSON.parse(body) as unknown;
+            const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+            const outputPath = resolve(outputDir, `local-analysis-${stamp}.json`);
+            mkdirSync(outputDir, { recursive: true });
+            writeFileSync(outputPath, JSON.stringify(snapshot, null, 2), "utf8");
+            res.statusCode = 200;
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify({ ok: true, path: outputPath }));
+          } catch {
+            res.statusCode = 400;
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify({ ok: false, message: "invalid snapshot" }));
+          }
+        });
+      });
+    },
+  };
+}
+
 // https://vite.dev/config/
 export default defineConfig(() => ({
-  plugins: [react()],
+  plugins: [react(), localAnalysisDebugPlugin()],
 
   clearScreen: false,
   server: {
@@ -32,6 +73,7 @@ export default defineConfig(() => ({
     globals: true,
     environment: "jsdom",
     setupFiles: "./src/setupTests.ts",
+    testTimeout: 15000,
   },
   build: {
     rolldownOptions: {

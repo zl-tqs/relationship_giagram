@@ -72,6 +72,63 @@ describe('改进后的人物提取', () => {
     }
   });
 
+  it('适配文言文说话、动作与叙事噪声', () => {
+    const text = [
+      '姜子牙曰：“纣王无道，吾代理封神。”',
+      '子牙曰：“今日出营，明日进营。”',
+      '纣王曰：“姜子牙，你敢反我？”',
+      '黄飞虎曰：“末将听令。”',
+      '飞虎曰：“愿随太师。”',
+      '苏全忠曰：“父亲小心。”',
+      '全忠曰：“孩儿明白。”',
+      '哪吒应曰：“弟子愿往。”',
+      '妲己曰：“大王，且听妾言。”',
+      '武王曰：“太师以为如何？”',
+      '子牙传令：“三军入中军。”',
+      '子牙吩咐妖怪：“大呼曰，人曰，不表，不言。”',
+      '燃灯道人曰：“准提道人来了。”',
+      '燃灯曰：“不表此事。”',
+      '准提曰：“不言也罢。”',
+      '纣王囚禁大臣，百官退下，军士与士卒守在鹿台、摘星楼。',
+      '万仙阵前数合，东南方向言语不断。',
+    ].join('\n');
+    const names = extractCharacterCandidates(text).map((candidate) => candidate.name);
+
+    expect(names).toEqual(expect.arrayContaining([
+      '姜子牙', '纣王', '黄飞虎', '苏全忠', '哪吒', '妲己', '武王',
+      '燃灯道人', '准提道人',
+    ]));
+    for (const alias of ['子牙', '飞虎', '全忠', '燃灯', '准提']) {
+      expect(names).not.toContain(alias);
+    }
+    for (const noise of [
+      '大呼曰', '人曰', '不表', '不言', '出营', '进营', '吾代理封神',
+      '纣王囚禁大臣', '子牙吩咐妖怪', '入中军', '百官', '军士', '士卒',
+      '万仙阵', '鹿台', '摘星楼', '数合', '东南', '言语',
+    ]) {
+      expect(names).not.toContain(noise);
+    }
+  });
+
+  it('个人头衔优先取最短前缀，避免把动作并入姓名', () => {
+    const text = '众人机模仿寇员外说道：“高太公来了。”';
+    const names = extractCharacterCandidates(text).map((candidate) => candidate.name);
+
+    expect(names).toContain('寇员外');
+    expect(names).not.toContain('机模仿寇员外');
+  });
+
+  it('不把仅出现在全名内部的尾部当作别名', () => {
+    const text = [
+      '土行孙说道：“我先去。”',
+      '土行孙笑道：“莫急。”',
+      '土行孙转身走了。',
+    ].join('\n');
+    const candidate = extractCharacterCandidates(text).find((item) => item.name === '土行孙');
+
+    expect(candidate?.aliases ?? []).not.toContain('行孙');
+  });
+
   it('默认候选上限为 120', () => {
     expect(DEFAULT_CANDIDATE_LIMIT).toBe(120);
   });

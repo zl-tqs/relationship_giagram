@@ -3,8 +3,9 @@ import {
   COMPOUND_SURNAMES, CONJUNCTION_PATTERN, INVALID_END_CHARS, INVALID_START_CHARS,
   NAME_BLOCKED_INTERNAL, NAME_START_EXCEPTIONS, OBJECT_PATTERN, OBJECT_WORDS,
   PREPOSITION_PATTERN, ROLE_WORDS, SCAN_GIVEN_END_CHARS, SHORT_PREFIX_SUFFIXES,
-  SINGLE_SURNAMES, SPECIAL_PREFIX_BLACKLIST, SPECIAL_PREFIX_STOP_CHARS,
-  SPECIAL_SUFFIXES, SPEAKER_PATTERN, STOP_WORDS, WEAK_SURNAMES,
+  SHORTEST_PREFIX_SUFFIXES, SINGLE_SURNAMES, SPECIAL_PREFIX_BLACKLIST,
+  SPECIAL_PREFIX_STOP_CHARS, SPECIAL_SUFFIXES, SPEAKER_PATTERN, STOP_WORDS,
+  WEAK_SURNAMES,
 } from './lexicon';
 import type { CandidateConfidence, CharacterCandidate, Cooccurrence } from './types';
 
@@ -79,7 +80,7 @@ function isValidNameShape(name: string) {
   } else if (INVALID_START_CHARS.has(name[0]) && !NAME_START_EXCEPTIONS.has(name)) {
     return false;
   }
-  if (INVALID_END_CHARS.has(name[name.length - 1])) return false;
+  if (!special && INVALID_END_CHARS.has(name[name.length - 1])) return false;
   if (NAME_FUNCTION_CHARS.test(name) || NAME_BLOCKED_INTERNAL.test(name)) return false;
   return !isNonPersonWord(name) && !hasInvalidRoleShape(name);
 }
@@ -99,7 +100,6 @@ function isSpecialName(name: string) {
   if (!matchingRoleSuffix(name)) return false;
   if (name.length < 3 || name.length > 7 || !isChinese(name)) return false;
   if (SPECIAL_PREFIX_BLACKLIST.has(name[0])) return false;
-  if (INVALID_END_CHARS.has(name[name.length - 1])) return false;
   if (NAME_FUNCTION_CHARS.test(name) || NAME_BLOCKED_INTERNAL.test(name)) return false;
   return !isNonPersonWord(name) && !hasInvalidRoleShape(name);
 }
@@ -111,11 +111,18 @@ function isBoundaryAfter(text: string, endIndex: number) {
 }
 
 function pickLongestValidSuffix(raw: string, validator: (name: string) => boolean, maxLength = 6) {
+  let shortTitle: string | null = null;
   for (let length = Math.min(maxLength, raw.length); length >= 2; length -= 1) {
     const name = raw.slice(raw.length - length);
-    if (validator(name)) return name;
+    if (!validator(name)) continue;
+    const suffix = matchingRoleSuffix(name);
+    if (suffix && SHORTEST_PREFIX_SUFFIXES.has(suffix)) {
+      shortTitle = name;
+      continue;
+    }
+    return name;
   }
-  return null;
+  return shortTitle;
 }
 
 function pickNameAfter(
@@ -213,7 +220,9 @@ function extractSpecialNames(text: string, candidates: Map<string, CandidateInfo
       prefix = `${char}${prefix}`;
     }
 
-    for (let length = prefix.length; length >= 1; length -= 1) {
+    const shortest = SHORTEST_PREFIX_SUFFIXES.has(suffix);
+    for (let step = 1; step <= prefix.length; step += 1) {
+      const length = shortest ? step : prefix.length - step + 1;
       const name = `${prefix.slice(prefix.length - length)}${suffix}`;
       if (isSpecialName(name)) {
         addCandidate(candidates, name, 'special');
@@ -261,7 +270,7 @@ function scanSurnames(
   }
 }
 
-function absorbShorterNames(candidates: Map<string, CandidateInfo>) {
+function absorbShorterNames(text: string, candidates: Map<string, CandidateInfo>) {
   const entries = [...candidates.values()].sort(
     (left, right) => right.name.length - left.name.length || right.count - left.count,
   );
@@ -282,7 +291,11 @@ function absorbShorterNames(candidates: Map<string, CandidateInfo>) {
       const strongShorter = shorter.sources.has('speaker')
         || shorter.sources.has('special')
         || shorter.sources.has('chapter');
-      if (suffixMatch || strongShorter) {
+      const standalone = Math.max(
+        0,
+        countOccurrences(text, shorter.name) - countOccurrences(text, longer.name),
+      );
+      if ((suffixMatch || strongShorter) && (standalone > 0 || strongShorter)) {
         longer.aliases.add(shorter.name);
         for (const alias of shorter.aliases) longer.aliases.add(alias);
       }
@@ -309,8 +322,16 @@ function expandSuffixAliases(text: string, candidates: Map<string, CandidateInfo
     if (isNonPersonWord(suffix) || INVALID_END_CHARS.has(suffix[1]) || INVALID_START_CHARS.has(suffix[0])) {
       continue;
     }
-    const count = countOccurrences(text, suffix);
-    if (count >= 2 || candidate.sources.has('speaker')) {
+    const suffixOwners = [...candidates.values()].filter((item) => item.name.endsWith(suffix));
+    if (suffixOwners.length > 1) continue;
+    const count = Math.max(
+      0,
+      countOccurrences(text, suffix) - countOccurrences(text, candidate.name),
+    );
+    const required = candidate.sources.has('speaker')
+      ? Math.max(1, Math.ceil(candidate.count * 0.1))
+      : 2;
+    if (count >= required) {
       candidate.aliases.add(suffix);
     }
   }
@@ -387,7 +408,7 @@ export function extractCharacterCandidates(
 
   scanSurnames(text, candidates, [...candidates.keys()]);
   applyChapterBoost(text, candidates);
-  absorbShorterNames(candidates);
+  absorbShorterNames(text, candidates);
   expandSuffixAliases(text, candidates);
 
   for (const [name, info] of candidates) {

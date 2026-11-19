@@ -11,7 +11,9 @@ import {
 } from '../api/analysis';
 import { saveCanvas } from '../api/canvas';
 import { toApiError } from '../api/client';
+import { saveLocalAnalysisDebug } from '../api/debug';
 import { mergeCandidateRows, type MergeableCandidate } from '../core/analysis/candidates';
+import { buildLocalAnalysisSnapshot } from '../core/analysis/debugSnapshot';
 import { buildExcerpt } from '../core/analysis/excerpt';
 import { buildCanvasFromAnalysis } from '../core/analysis/graph';
 import { remapCooccurrences } from '../core/analysis/cooccurrence';
@@ -154,6 +156,25 @@ export function AnalysisPage() {
       );
       setProjectName(fileStem(file.name));
       setStep('confirm');
+      if (import.meta.env.DEV) {
+        const excerptPreview = buildExcerpt(
+          result.text,
+          result.candidates.map((candidate) => candidate.name),
+          { maxChars: 3000 },
+        );
+        void saveLocalAnalysisDebug(
+          buildLocalAnalysisSnapshot({
+            fileName: file.name,
+            fileSize: file.size,
+            encoding: result.encoding,
+            chapterCount: result.chapterCount,
+            textLength: result.text.length,
+            candidates: result.candidates,
+            cooccurrences: result.cooccurrences,
+            excerptPreview,
+          }),
+        ).catch(() => undefined);
+      }
       if (result.candidates.length === 0) {
         message.warning('未自动识别到人物，请手动添加至少一个人物');
       }
