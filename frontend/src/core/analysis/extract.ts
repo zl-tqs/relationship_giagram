@@ -1,9 +1,10 @@
 import {
   ACTION_PATTERN, BOUNDARY_AFTER_CHARS, COLLECTIVE_PATTERN, COMMON_SURNAMES,
-  COMPOUND_SURNAMES, CONJUNCTION_PATTERN, INVALID_END_CHARS, INVALID_START_CHARS,
-  NAME_BLOCKED_INTERNAL, NAME_START_EXCEPTIONS, OBJECT_PATTERN, OBJECT_WORDS,
-  PREPOSITION_PATTERN, ROLE_WORDS, SCAN_GIVEN_END_CHARS, SHORT_PREFIX_SUFFIXES,
-  SHORTEST_PREFIX_SUFFIXES, SINGLE_SURNAMES, SPECIAL_PREFIX_BLACKLIST,
+  COMPOUND_SURNAMES, CONJUNCTION_PATTERN, HARD_PLACE_SUFFIXES, INVALID_END_CHARS,
+  INVALID_START_CHARS, NAME_BLOCKED_INTERNAL, NAME_START_EXCEPTIONS, OBJECT_PATTERN,
+  OBJECT_WORDS, PHRASE_PREFIX_CHARS, PREPOSITION_PATTERN, ROLE_WORDS,
+  SCAN_GIVEN_END_CHARS, SHORT_PREFIX_SUFFIXES, SHORTEST_PREFIX_SUFFIXES,
+  SINGLE_SURNAMES, SOFT_PLACE_SUFFIXES, SPECIAL_PREFIX_BLACKLIST,
   SPECIAL_PREFIX_STOP_CHARS, SPECIAL_SUFFIXES, SPEAKER_PATTERN, STOP_WORDS,
   WEAK_SURNAMES,
 } from './lexicon';
@@ -67,6 +68,10 @@ function isNonPersonWord(name: string) {
     || OBJECT_WORDS.has(name)
     || SPECIAL_SUFFIXES.includes(name)
     || COLLECTIVE_PATTERN.test(name);
+}
+
+function hasPlaceSuffix(name: string, suffixes: Set<string>) {
+  return [...suffixes].some((suffix) => name.length > suffix.length && name.endsWith(suffix));
 }
 
 function isValidNameShape(name: string) {
@@ -270,6 +275,34 @@ function scanSurnames(
   }
 }
 
+function dropKnownNamePhrases(candidates: Map<string, CandidateInfo>) {
+  const strongNames = [...candidates.values()]
+    .filter((info) => info.sources.has('speaker')
+      || info.sources.has('special')
+      || info.sources.has('chapter'))
+    .map((info) => info.name)
+    .sort((left, right) => right.length - left.length);
+
+  for (const [name] of candidates) {
+    const extendedByRole = strongNames.some((known) => (
+      known.length < name.length
+      && name.startsWith(known)
+      && SPECIAL_SUFFIXES.includes(name.slice(known.length))
+    ));
+    if (extendedByRole) continue;
+    if (strongNames.some((known) => known.length < name.length && name.startsWith(known))) {
+      candidates.delete(name);
+      continue;
+    }
+    const prefixedByPhrase = strongNames.some((known) => {
+      if (known.length >= name.length || !name.endsWith(known)) return false;
+      const prefix = name.slice(0, name.length - known.length);
+      return prefix.length === 1 && PHRASE_PREFIX_CHARS.has(prefix);
+    });
+    if (prefixedByPhrase) candidates.delete(name);
+  }
+}
+
 function absorbShorterNames(text: string, candidates: Map<string, CandidateInfo>) {
   const entries = [...candidates.values()].sort(
     (left, right) => right.name.length - left.name.length || right.count - left.count,
@@ -408,6 +441,7 @@ export function extractCharacterCandidates(
 
   scanSurnames(text, candidates, [...candidates.keys()]);
   applyChapterBoost(text, candidates);
+  dropKnownNamePhrases(candidates);
   absorbShorterNames(text, candidates);
   expandSuffixAliases(text, candidates);
 
@@ -416,9 +450,21 @@ export function extractCharacterCandidates(
       candidates.delete(name);
       continue;
     }
+    if (COMPOUND_SURNAMES.includes(name)) {
+      candidates.delete(name);
+      continue;
+    }
     const onlyWeakSources = [...info.sources].every(
       (source) => ['scan', 'action', 'object', 'preposition', 'conjunction'].includes(source),
     );
+    if (hasPlaceSuffix(name, HARD_PLACE_SUFFIXES)) {
+      candidates.delete(name);
+      continue;
+    }
+    if (onlyWeakSources && hasPlaceSuffix(name, SOFT_PLACE_SUFFIXES)) {
+      candidates.delete(name);
+      continue;
+    }
     if (onlyWeakSources && info.count < (text.length < 500 ? 1 : 2)) {
       candidates.delete(name);
     }

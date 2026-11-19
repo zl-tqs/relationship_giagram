@@ -110,6 +110,43 @@ describe('改进后的人物提取', () => {
     }
   });
 
+  it('强说话人名后追加动词或名词不形成新的更长候选', () => {
+    const text = [
+      '孔明说道：“军师在此。”孔明作怪。',
+      '玄德说道：“贤弟。”玄德疑怪。',
+      '关公说道：“大哥。”关公迎。',
+      '张飞说道：“燕人。”张飞诗。',
+      '黄忠说道：“老将。”赞黄忠说道：“末将愿往。”',
+    ].join('\n');
+    const names = extractCharacterCandidates(text).map((candidate) => candidate.name);
+
+    expect(names).toEqual(expect.arrayContaining(['孔明', '玄德', '关公', '张飞', '黄忠']));
+    for (const noise of ['孔明作怪', '玄德疑怪', '关公迎', '张飞诗', '赞黄忠']) {
+      expect(names).not.toContain(noise);
+    }
+  });
+
+  it('过滤常见地名和行政区后缀，保留强说话人证据的人名', () => {
+    const text = [
+      '华夏说道：“这是地名。”',
+      '长城说道：“这是地名。”',
+      '国家说道：“这是地名。”',
+      '江南市说道：“这是城市。”',
+      '青云省说道：“这是省份。”',
+      '黑风岭说道：“这是山岭。”',
+      '张州说道：“我是人名。”',
+      '他去了A市和S省。',
+    ].join('\n');
+    const names = extractCharacterCandidates(text).map((candidate) => candidate.name);
+
+    expect(names).toContain('张州');
+    for (const place of [
+      '华夏', '长城', '国家', '江南市', '青云省', '黑风岭', 'A市', 'S省',
+    ]) {
+      expect(names).not.toContain(place);
+    }
+  });
+
   it('个人头衔优先取最短前缀，避免把动作并入姓名', () => {
     const text = '众人机模仿寇员外说道：“高太公来了。”';
     const names = extractCharacterCandidates(text).map((candidate) => candidate.name);
