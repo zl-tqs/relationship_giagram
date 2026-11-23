@@ -8,6 +8,7 @@ import {
   SPECIAL_PREFIX_STOP_CHARS, SPECIAL_SUFFIXES, SPEAKER_PATTERN, STOP_WORDS,
   TRANSLITERATION_CHARS, WEAK_SURNAMES,
 } from './lexicon';
+import { isPhraseCandidate } from './candidateRules';
 import type { CandidateConfidence, CharacterCandidate, Cooccurrence } from './types';
 
 export const DEFAULT_CANDIDATE_LIMIT = 120;
@@ -18,7 +19,6 @@ type Source =
 
 interface CandidateInfo {
   name: string;
-  count: number;
   sources: Set<Source>;
   aliases: Set<string>;
 }
@@ -101,7 +101,7 @@ function isValidNameShape(name: string) {
 }
 
 function isStrongName(name: string) {
-  return isValidNameShape(name);
+  return isValidNameShape(name) && !isPhraseCandidate(name);
 }
 
 function isScannedName(name: string) {
@@ -172,11 +172,10 @@ function addCandidate(
 ) {
   const existing = candidates.get(name);
   if (existing) {
-    existing.count += 1;
     existing.sources.add(source);
     return;
   }
-  candidates.set(name, { name, count: 1, sources: new Set([source]), aliases: new Set() });
+  candidates.set(name, { name, sources: new Set([source]), aliases: new Set() });
 }
 
 function extractSpeakers(text: string, candidates: Map<string, CandidateInfo>) {
@@ -325,6 +324,12 @@ function scanSurnames(
   }
 }
 
+function dropPhraseCandidates(candidates: Map<string, CandidateInfo>) {
+  for (const name of [...candidates.keys()]) {
+    if (isPhraseCandidate(name)) candidates.delete(name);
+  }
+}
+
 function dropKnownNamePhrases(candidates: Map<string, CandidateInfo>) {
   const strongNames = [...candidates.values()]
     .filter((info) => info.sources.has('speaker')
@@ -358,9 +363,14 @@ function dropKnownNamePhrases(candidates: Map<string, CandidateInfo>) {
   }
 }
 
-function absorbShorterNames(text: string, candidates: Map<string, CandidateInfo>) {
+function absorbShorterNames(
+  text: string,
+  candidates: Map<string, CandidateInfo>,
+  actualCounts: Map<string, number>,
+) {
   const entries = [...candidates.values()].sort(
-    (left, right) => right.name.length - left.name.length || right.count - left.count,
+    (left, right) => right.name.length - left.name.length
+      || (actualCounts.get(right.name) ?? 0) - (actualCounts.get(left.name) ?? 0),
   );
   const removed = new Set<string>();
 
@@ -370,11 +380,13 @@ function absorbShorterNames(text: string, candidates: Map<string, CandidateInfo>
     for (let j = i + 1; j < entries.length; j += 1) {
       const shorter = entries[j];
       if (removed.has(shorter.name) || !longer.name.includes(shorter.name)) continue;
+      const longerActual = actualCounts.get(longer.name) ?? 0;
+      const shorterActual = actualCounts.get(shorter.name) ?? 0;
       const longerTrusted = longer.sources.has('speaker')
         || longer.sources.has('special')
         || longer.sources.has('chapter')
         || longer.sources.has('transliteration')
-        || longer.count >= shorter.count;
+        || longerActual >= shorterActual;
       if (!longerTrusted) continue;
       const suffixMatch = longer.name.endsWith(shorter.name);
       const strongShorter = shorter.sources.has('speaker')
@@ -389,7 +401,6 @@ function absorbShorterNames(text: string, candidates: Map<string, CandidateInfo>
         longer.aliases.add(shorter.name);
         for (const alias of shorter.aliases) longer.aliases.add(alias);
       }
-      longer.count = Math.max(longer.count, shorter.count);
       for (const source of shorter.sources) longer.sources.add(source);
       removed.add(shorter.name);
     }
@@ -419,7 +430,7 @@ function expandSuffixAliases(text: string, candidates: Map<string, CandidateInfo
       countOccurrences(text, suffix) - countOccurrences(text, candidate.name),
     );
     const required = candidate.sources.has('speaker')
-      ? Math.max(1, Math.ceil(candidate.count * 0.1))
+      ? Math.max(1, Math.ceil(countOccurrences(text, candidate.name) * 0.1))
       : 2;
     if (count >= required) {
       candidate.aliases.add(suffix);
@@ -468,13 +479,16 @@ function countOccurrences(text: string, name: string) {
   return text.match(new RegExp(escaped, 'g'))?.length ?? 0;
 }
 
-function scoreOf(info: CandidateInfo, text: string, partners: Set<string> | undefined) {
+function scoreOf(
+  info: CandidateInfo,
+  actualCount: number,
+  partners: Set<string> | undefined,
+) {
   let score = 0;
   for (const source of info.sources) score += SOURCE_SCORE[source];
-  const count = countOccurrences(text, info.name);
-  if (count >= 10) score += 3;
-  else if (count >= 5) score += 2;
-  else if (count >= 3) score += 1;
+  if (actualCount >= 10) score += 3;
+  else if (actualCount >= 5) score += 2;
+  else if (actualCount >= 3) score += 1;
   const weight = surnameWeight(info.name);
   if (weight >= 0.8) score += 2;
   else if (weight >= 0.5) score += 1;
@@ -499,8 +513,11 @@ export function extractCharacterCandidates(
 
   scanSurnames(text, candidates, [...candidates.keys()]);
   applyChapterBoost(text, candidates);
+  const actualCounts = new Map<string, number>();
+  for (const name of candidates.keys()) actualCounts.set(name, countOccurrences(text, name));
+  dropPhraseCandidates(candidates);
   dropKnownNamePhrases(candidates);
-  absorbShorterNames(text, candidates);
+  absorbShorterNames(text, candidates, actualCounts);
   expandSuffixAliases(text, candidates);
 
   for (const [name, info] of candidates) {
@@ -528,7 +545,7 @@ export function extractCharacterCandidates(
       candidates.delete(name);
       continue;
     }
-    if (onlyWeakSources && info.count < (text.length < 500 ? 1 : 2)) {
+    if (onlyWeakSources && (actualCounts.get(name) ?? 0) < (text.length < 500 ? 1 : 2)) {
       candidates.delete(name);
     }
   }
@@ -537,11 +554,11 @@ export function extractCharacterCandidates(
   const partners = buildSentencePartners(text, names);
   const scored = names.map((name) => {
     const info = candidates.get(name)!;
-    const score = scoreOf(info, text, partners.get(name));
+    const actualCount = countOccurrences(text, name);
     return {
       name,
-      count: Math.max(info.count, countOccurrences(text, name)),
-      confidence: confidenceOf(score),
+      count: actualCount,
+      confidence: confidenceOf(scoreOf(info, actualCount, partners.get(name))),
       aliases: [...info.aliases].sort((left, right) => right.length - left.length),
     };
   });
