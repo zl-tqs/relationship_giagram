@@ -43,9 +43,14 @@ describe.skipIf(!existsSync(novelPath))('红楼梦本地提取回归', () => {
       '手来拉著宝玉', '著贾母', '著宝钗', '拉平儿', '推晴雯',
       '推紫鹃', '赦贾政', '纨探春', '命贾蓉', '里贾琏出来',
       '著李纨', '著香菱', '上拉著金桂',
+      // 强名扫描拼接与多字 `夫人` 前缀（本轮修复）
+      '贾母王', '邢王二夫人', '大夫人', '二夫人', '宝二夫人', '史太君夫人', '王二',
     ]) {
       expect(names).not.toContain(noise);
     }
+    // 扫描末字门槛截断的 `蒋玉` 补全为完整姓名 `蒋玉菡`。
+    expect(names).not.toContain('蒋玉');
+    expect(names).toContain('蒋玉菡');
   }, 120000);
 
   it('不把红楼梦地名和泛称作为人物', () => {
@@ -67,6 +72,7 @@ describe.skipIf(!existsSync(novelPath))('红楼梦本地提取回归', () => {
 
   it('别名合并后共现不包含互为子串的人物对', () => {
     expect(result.cooccurrences.length).toBeGreaterThan(0);
+    // preprocessNovel 走 buildCooccurrences 的前 40 对重映射切片，因此断言范围是该切片。
     for (const pair of result.cooccurrences) {
       expect(pair.a.includes(pair.b) || pair.b.includes(pair.a)).toBe(false);
     }

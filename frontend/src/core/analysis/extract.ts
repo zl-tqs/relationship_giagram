@@ -4,10 +4,10 @@ import {
   HARD_PLACE_SUFFIXES, INVALID_END_CHARS,
   INVALID_START_CHARS, NAME_BLOCKED_INTERNAL, NAME_START_EXCEPTIONS, OBJECT_PATTERN,
   OBJECT_WORDS, PHRASE_PREFIX_CHARS, PREPOSITION_PATTERN, ROLE_WORDS,
-  SCAN_GIVEN_END_CHARS, SHORT_PREFIX_SUFFIXES, SHORTEST_PREFIX_SUFFIXES,
-  SINGLE_SURNAMES, SOFT_PLACE_SUFFIXES, SPECIAL_PREFIX_BLACKLIST,
-  SPECIAL_PREFIX_STOP_CHARS, SPECIAL_SUFFIXES, SPEAKER_PATTERN, STOP_WORDS,
-  TRANSLITERATION_CHARS, WEAK_SURNAMES,
+  EXACT_ONE_CHAR_PREFIX_SUFFIXES, SCAN_GIVEN_END_CHARS, SHORT_PREFIX_SUFFIXES,
+  SHORTEST_PREFIX_SUFFIXES, SINGLE_SURNAMES, SOFT_PLACE_SUFFIXES,
+  SPECIAL_PREFIX_BLACKLIST, SPECIAL_PREFIX_STOP_CHARS, SPECIAL_SUFFIXES,
+  SPEAKER_PATTERN, STOP_WORDS, TRANSLITERATION_CHARS, WEAK_SURNAMES,
 } from './lexicon';
 import { isPhraseCandidate, isTransliterationLike } from './candidateRules';
 import type { CandidateConfidence, CharacterCandidate, Cooccurrence } from './types';
@@ -66,6 +66,11 @@ function hasInvalidRoleShape(name: string) {
   const suffix = matchingRoleSuffix(name);
   if (!suffix) return false;
   const prefixLength = name.length - suffix.length;
+  // `夫人` 只接受 1 字姓氏前缀（王夫人/邢夫人）：`二夫人`、`大夫人`、`宝二夫人`、
+  // `史太君夫人`、`邢王二夫人` 这类前缀要么是泛化字，要么是拼接短语。
+  if (EXACT_ONE_CHAR_PREFIX_SUFFIXES.has(suffix)) {
+    return prefixLength !== 1 || surnameWeight(name[0]) < 0.5;
+  }
   return SHORT_PREFIX_SUFFIXES.has(suffix) ? prefixLength < 1 : prefixLength < 2;
 }
 
@@ -90,7 +95,7 @@ function isValidNameShape(name: string) {
   if (name.length < 2 || name.length > maxLength) return false;
   if (!isChinese(name)) return false;
   if (special) {
-    if (SPECIAL_PREFIX_BLACKLIST.has(name[0])) return false;
+    if (SPECIAL_PREFIX_BLACKLIST.has(name[0]) && !NAME_START_EXCEPTIONS.has(name)) return false;
   } else if (INVALID_START_CHARS.has(name[0]) && !NAME_START_EXCEPTIONS.has(name)) {
     return false;
   }
@@ -118,7 +123,7 @@ function isScannedName(name: string) {
 function isSpecialName(name: string) {
   if (!matchingRoleSuffix(name)) return false;
   if (name.length < 3 || name.length > 7 || !isChinese(name)) return false;
-  if (SPECIAL_PREFIX_BLACKLIST.has(name[0])) return false;
+  if (SPECIAL_PREFIX_BLACKLIST.has(name[0]) && !NAME_START_EXCEPTIONS.has(name)) return false;
   if (NAME_FUNCTION_CHARS.test(name) || NAME_BLOCKED_INTERNAL.test(name)) return false;
   return !isNonPersonWord(name) && !hasInvalidRoleShape(name);
 }
@@ -174,9 +179,11 @@ function addCandidate(
   const existing = candidates.get(name);
   if (existing) {
     existing.sources.add(source);
-    return;
+    return existing;
   }
-  candidates.set(name, { name, sources: new Set([source]), aliases: new Set() });
+  const info: CandidateInfo = { name, sources: new Set([source]), aliases: new Set() };
+  candidates.set(name, info);
+  return info;
 }
 
 function extractSpeakers(text: string, candidates: Map<string, CandidateInfo>) {
@@ -302,6 +309,9 @@ function scanSurnames(
   candidates: Map<string, CandidateInfo>,
   knownNames: string[],
 ) {
+  // 记录每个扫描名在原文里紧跟的字：全部出现都跟同一个汉字时才可能是截断切片
+  // （如 `蒋玉` 在正文里只以 `蒋玉菡` 出现）。null 表示出现过不同的后续字。
+  const followChars = new Map<string, string | null>();
   for (let index = 0; index < text.length; index += 1) {
     const compound = COMPOUND_SURNAMES.find((surname) => text.startsWith(surname, index));
     const surnameLength = compound ? compound.length : SINGLE_SURNAMES.has(text[index]) ? 1 : 0;
@@ -315,13 +325,51 @@ function scanSurnames(
       const name = text.slice(index, index + surnameLength + givenLength);
       if (name.length !== surnameLength + givenLength || !isScannedName(name)) continue;
       const next = text[index + name.length] ?? '';
-      if (/[一二三四五六七八九十]$/.test(name) && '人行个位名众起路边只次年月日'.includes(next)) {
+      // 数字结尾的扫描名后面紧跟量词/称谓时多是非人名片段：`王二位`、`邢王二夫人`。
+      if (/[一二三四五六七八九十]$/.test(name) && '人行个位名众起路边只次年月日夫'.includes(next)) {
         continue;
       }
       addCandidate(candidates, name, 'scan');
+      const previous = followChars.get(name);
+      if (previous === undefined) followChars.set(name, next);
+      else if (previous !== next) followChars.set(name, null);
       index += name.length - 1;
       break;
     }
+  }
+  return followChars;
+}
+
+/**
+ * 补全被扫描末字门槛截断的姓名（如 `蒋玉` → `蒋玉菡`）。
+ *
+ * 只在短名带扫描来源、没有独立上下文证据（说话人/特殊身份/音译）、所有出现都
+ * 紧跟同一个汉字、扩展后仍是合法姓名形状，且长短名出现次数完全一致（短名从未
+ * 独立出现）时才替换，避免误伤真实短名。章节来源由标题子串匹配产生，随短名一起
+ * 继承到长名。
+ */
+function extendTruncatedScannedNames(
+  text: string,
+  candidates: Map<string, CandidateInfo>,
+  followChars: Map<string, string | null>,
+) {
+  for (const [name, info] of [...candidates]) {
+    if (name.length !== 2) continue;
+    if (!info.sources.has('scan') || hasContextSource(info.sources)) continue;
+    // 只有短名已经拿到章节标题证据（说明它在正文结构里被当成完整名字提及）时才补全，
+    // 纯扫描短名多为 `常高`/`方百` 这类短语碎片，补全只会换成另一种碎片。
+    if (!info.sources.has('chapter')) continue;
+    const follow = followChars.get(name);
+    if (!follow || !isChinese(follow)) continue;
+    const extended = `${name}${follow}`;
+    if (candidates.has(extended)) continue;
+    if (!isValidNameShape(extended) || surnameWeight(extended) < 0.5) continue;
+    const extendedCount = countOccurrences(text, extended);
+    if (extendedCount < 2 || countOccurrences(text, name) !== extendedCount) continue;
+    const extendedInfo = addCandidate(candidates, extended, 'scan');
+    // 短名的所有出现都包含在长名里，其来源证据同样适用于长名。
+    for (const source of info.sources) extendedInfo.sources.add(source);
+    candidates.delete(name);
   }
 }
 
@@ -335,25 +383,36 @@ const NAME_EXTENSION_SUFFIXES = new Set([
   '夫人', '姑娘', '奶奶', '姐姐', '妹妹', '姐', '姨', '氏', '娘',
 ]);
 
-function isAllowedNameExtension(text: string, name: string, known: string) {
+/**
+ * 判断“强名 + 额外字”的更长候选是否可保留。
+ *
+ * - 额外字是角色后缀（`夫人/姑娘/...`）时保留（`王夫人`）；
+ * - 额外字是 `云` 时要求原文有说话动词（`史湘云道`），避免 `孔明云`；
+ * - 额外字只是可作姓名末字的泛化字时，必须由更长候选自己的强来源（说话人/
+ *   特殊身份/章节/音译）支撑，否则 `贾母` + `王` 这类纯扫描拼接会留在高置信度候选中。
+ */
+export function isAllowedNameExtension(
+  text: string,
+  name: string,
+  known: string,
+  sources: Set<CandidateSource>,
+) {
   const extra = name.slice(known.length);
   if (extra === '云') {
     return ['道', '说道', '笑道', '问道', '答道'].some((suffix) => text.includes(name + suffix));
   }
-  return NAME_EXTENSION_SUFFIXES.has(extra)
-    || [...extra].every((char) => SCAN_GIVEN_END_CHARS.has(char));
+  if (NAME_EXTENSION_SUFFIXES.has(extra)) return true;
+  return hasStrongSource(sources)
+    && [...extra].every((char) => SCAN_GIVEN_END_CHARS.has(char));
 }
 
 function dropKnownNamePhrases(text: string, candidates: Map<string, CandidateInfo>) {
   const strongNames = [...candidates.values()]
-    .filter((info) => info.sources.has('speaker')
-      || info.sources.has('special')
-      || info.sources.has('chapter')
-      || info.sources.has('transliteration'))
+    .filter((info) => hasStrongSource(info.sources))
     .map((info) => info.name)
     .sort((left, right) => right.length - left.length);
 
-  for (const [name] of candidates) {
+  for (const [name, info] of candidates) {
     if (name.includes('·')) continue;
     const extendedByRole = strongNames.some((known) => (
       known.length < name.length
@@ -361,12 +420,10 @@ function dropKnownNamePhrases(text: string, candidates: Map<string, CandidateInf
       && SPECIAL_SUFFIXES.includes(name.slice(known.length))
     ));
     if (extendedByRole) continue;
-    if (strongNames.some((known) => known.length < name.length && name.startsWith(known))) {
-      const known = strongNames.find((item) => item.length < name.length && name.startsWith(item))!;
-      if (!isAllowedNameExtension(text, name, known)) {
-        candidates.delete(name);
-        continue;
-      }
+    const knownPrefix = strongNames.find((known) => known.length < name.length && name.startsWith(known));
+    if (knownPrefix && !isAllowedNameExtension(text, name, knownPrefix, info.sources)) {
+      candidates.delete(name);
+      continue;
     }
     const prefixedByPhrase = strongNames.some((known) => {
       if (known.length >= name.length || !name.endsWith(known)) return false;
@@ -435,17 +492,10 @@ function absorbShorterNames(
           && surnameWeight(shorter.name) >= 0.5;
         if (hasStrongSource(shorter.sources) || weakSurname) continue;
       }
-      const longerTrusted = longer.sources.has('speaker')
-        || longer.sources.has('special')
-        || longer.sources.has('chapter')
-        || longer.sources.has('transliteration')
-        || longerActual >= shorterActual;
+      const longerTrusted = hasStrongSource(longer.sources) || longerActual >= shorterActual;
       if (!longerTrusted) continue;
       const suffixMatch = longer.name.endsWith(shorter.name);
-      const strongShorter = shorter.sources.has('speaker')
-        || shorter.sources.has('special')
-        || shorter.sources.has('chapter')
-        || shorter.sources.has('transliteration');
+      const strongShorter = hasStrongSource(shorter.sources);
       if ((suffixMatch || strongShorter) && (standalone > 0 || strongShorter)
         && !GENERIC_ALIAS_WORDS.has(shorter.name)) {
         longer.aliases.add(shorter.name);
@@ -533,11 +583,19 @@ function countOccurrences(text: string, name: string) {
   return text.match(new RegExp(escaped, 'g'))?.length ?? 0;
 }
 
-const BAD_CONTEXT_BEFORE = /[拉推扶抱背牵拽提拖瞅著着和与跟同向从到把被将]$/;
+// 动作动词 + 体标记：这些字紧邻人名时说明候选更可能是“拉宝玉/推平儿”这类动作短语。
+// 刻意不包含 和/与/跟/同/向/从/到/把/被/将 等语法标记：它们后面正常跟着
+// 合法的宾语/同伴（如“和贾玉说话”），不能当作负面上下文。
+const BAD_CONTEXT_BEFORE = /[拉推扶抱背牵拽提拖瞅着著]$/;
 const CONTEXT_GATE_MIN_COUNT = 3;
 
 function hasStrongSource(sources: Set<CandidateSource>) {
   return [...sources].some((source) => STRONG_SOURCES.has(source));
+}
+
+// 有意排除 chapter：章节来源只是“标题包含该串”的子串命中，不能证明短名独立成立。
+function hasContextSource(sources: Set<CandidateSource>) {
+  return sources.has('speaker') || sources.has('special') || sources.has('transliteration');
 }
 
 /**
@@ -619,12 +677,15 @@ export function extractCharacterCandidates(
   extractSpecialNames(text, candidates);
   extractTransliteratedNames(text, candidates);
 
-  scanSurnames(text, candidates, [...candidates.keys()]);
+  const scanFollowChars = scanSurnames(text, candidates, [...candidates.keys()]);
   applyChapterBoost(text, candidates);
-  const actualCounts = new Map<string, number>();
-  for (const name of candidates.keys()) actualCounts.set(name, countOccurrences(text, name));
   dropPhraseCandidates(candidates);
   dropKnownNamePhrases(text, candidates);
+  // 截断补全放在“强名前缀短语清理”之后：短名可能凭章节标题子串命中拿到 chapter
+  // 来源，从而把真正完整的姓名误判成“强名 + 多余字”而删除。
+  extendTruncatedScannedNames(text, candidates, scanFollowChars);
+  const actualCounts = new Map<string, number>();
+  for (const name of candidates.keys()) actualCounts.set(name, countOccurrences(text, name));
   absorbShorterNames(candidates, actualCounts);
   expandSuffixAliases(text, candidates);
   dropWeakContextNoise(text, candidates, actualCounts);

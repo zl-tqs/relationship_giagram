@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { isPhraseCandidate } from './candidateRules';
 import { remapCooccurrences } from './cooccurrence';
 import {
-  buildCooccurrences, extractCharacterCandidates, isWeakContextNoise,
-  type CandidateSource,
+  buildCooccurrences, extractCharacterCandidates, isAllowedNameExtension,
+  isWeakContextNoise, type CandidateSource,
 } from './extract';
 import { buildAliasIndex } from './preprocess';
 import { ROLE_WORDS, STOP_WORDS } from './lexicon';
@@ -287,6 +287,90 @@ describe('候选规范化回归', () => {
     const names = extractCharacterCandidates(text).map((candidate) => candidate.name);
 
     expect(names).toContain('贾玉');
+  });
+
+  it('弱来源候选出现在语法标记后不按负面上下文删除', () => {
+    const text = Array.from({ length: 5 }, () => '我和贾玉说话。').join('\n');
+
+    const names = extractCharacterCandidates(text).map((candidate) => candidate.name);
+
+    expect(names).toContain('贾玉');
+  });
+
+  it('只有扫描证据的强名拼接被剔除，强名本身保留', () => {
+    const text = [
+      '贾母说道：“一。”',
+      '王夫人说道：“二。”',
+      '贾母王夫人都在。',
+    ].join('\n');
+
+    const names = extractCharacterCandidates(text).map((candidate) => candidate.name);
+
+    expect(names).toContain('贾母');
+    expect(names).toContain('王夫人');
+    expect(names).not.toContain('贾母王');
+  });
+
+  it('称谓后缀只接受 1 字姓氏前缀', () => {
+    const text = [
+      '王夫人说道：“一。”',
+      '邢夫人笑道：“二。”',
+      '二夫人说道：“三。”',
+      '大夫人笑道：“四。”',
+      '宝二夫人说道：“五。”',
+      '史太君夫人笑道：“六。”',
+      '邢王二夫人说道：“七。”',
+    ].join('\n');
+
+    const names = extractCharacterCandidates(text).map((candidate) => candidate.name);
+
+    expect(names).toContain('王夫人');
+    expect(names).toContain('邢夫人');
+    for (const noise of ['二夫人', '大夫人', '宝二夫人', '史太君夫人', '邢王二夫人']) {
+      expect(names).not.toContain(noise);
+    }
+  });
+
+  it('软地名后缀不删除有强说话人证据的真实姓名，硬地名后缀仍过滤', () => {
+    const text = [
+      '王子轩说道：“一。”',
+      '欧阳轩笑道：“二。”',
+      '李观说道：“三。”',
+      '王堂笑道：“四。”',
+      '怡红院说道：“五。”',
+      '大观园笑道：“六。”',
+      '潇湘馆说道：“七。”',
+    ].join('\n');
+
+    const names = extractCharacterCandidates(text).map((candidate) => candidate.name);
+
+    for (const person of ['王子轩', '欧阳轩', '李观', '王堂']) {
+      expect(names).toContain(person);
+    }
+    for (const place of ['怡红院', '大观园', '潇湘馆']) {
+      expect(names).not.toContain(place);
+    }
+  });
+});
+
+describe('isAllowedNameExtension 边界', () => {
+  it('扫描末字扩展必须由更长候选自身的强来源支撑', () => {
+    expect(isAllowedNameExtension('贾母王夫人', '贾母王', '贾母', new Set<CandidateSource>(['scan'])))
+      .toBe(false);
+    expect(isAllowedNameExtension(
+      '贾母王夫人', '贾母王', '贾母', new Set<CandidateSource>(['scan', 'speaker']),
+    )).toBe(true);
+    expect(isAllowedNameExtension('贾宝玉', '贾宝玉', '贾宝', new Set<CandidateSource>(['scan'])))
+      .toBe(false);
+  });
+
+  it('角色后缀与 云 说话上下文例外不受强烈来源限制', () => {
+    expect(isAllowedNameExtension('王夫人说道：“一。”', '王夫人', '王', new Set<CandidateSource>(['scan'])))
+      .toBe(true);
+    expect(isAllowedNameExtension('史湘云道：“一。”', '史湘云', '史湘', new Set<CandidateSource>(['scan'])))
+      .toBe(true);
+    expect(isAllowedNameExtension('孔明云：“一。”', '孔明云', '孔明', new Set<CandidateSource>(['scan'])))
+      .toBe(false);
   });
 });
 
