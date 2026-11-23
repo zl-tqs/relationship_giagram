@@ -13,10 +13,9 @@ export interface PreprocessOutcome {
   cooccurrences: Cooccurrence[];
 }
 
-export function preprocessNovel(data: ArrayBuffer): PreprocessOutcome {
-  const decoded = decodeNovelFile(data);
-  const chapters = splitChapters(decoded.text);
-  const candidates = extractCharacterCandidates(decoded.text);
+// 泛称别名（如“妹妹”）在正文里指向不唯一，不能映射到某个具体角色。
+// 导出以便单测直接覆盖该门禁：泛称别名既不做映射也不参与共现。
+export function buildAliasIndex(candidates: CharacterCandidate[]) {
   const aliasMap: Record<string, string> = {};
   const allNames: string[] = [];
   for (const candidate of candidates) {
@@ -27,6 +26,14 @@ export function preprocessNovel(data: ArrayBuffer): PreprocessOutcome {
       allNames.push(alias);
     }
   }
+  return { aliasMap, allNames };
+}
+
+export function preprocessNovel(data: ArrayBuffer): PreprocessOutcome {
+  const decoded = decodeNovelFile(data);
+  const chapters = splitChapters(decoded.text);
+  const candidates = extractCharacterCandidates(decoded.text);
+  const { aliasMap, allNames } = buildAliasIndex(candidates);
   return {
     text: decoded.text,
     encoding: decoded.encoding,

@@ -120,8 +120,60 @@ describe('候选规范化回归', () => {
       expect(names).not.toContain(noise);
     }
 
+    expect(names).toContain('林黛玉');
+    expect(names).toContain('林妹妹');
     const sister = candidates.find((candidate) => candidate.name === '林妹妹');
+    expect(sister).toBeDefined();
     expect(sister?.aliases ?? []).not.toContain('妹妹');
+  });
+
+  it('硬地名后缀在强说话人来源下仍被过滤', () => {
+    const text = [
+      '怡红院说道：“好。”',
+      '大观园笑道：“好。”',
+      '潇湘馆说道：“好。”',
+      '荣国府笑道：“好。”',
+      '贾宝玉说道：“好。”',
+    ].join('\n');
+
+    const names = extractCharacterCandidates(text).map((candidate) => candidate.name);
+
+    expect(names).toContain('贾宝玉');
+    for (const place of ['怡红院', '大观园', '潇湘馆', '荣国府', '国府']) {
+      expect(names).not.toContain(place);
+    }
+  });
+
+  it('泛称频次高于具体称呼时也不生成泛称别名', () => {
+    const text = [
+      '妹妹说道：“一。”',
+      '妹妹笑道：“二。”',
+      '林妹妹说道：“三。”',
+    ].join('\n');
+
+    const candidates = extractCharacterCandidates(text);
+    const names = candidates.map((candidate) => candidate.name);
+    const sister = candidates.find((candidate) => candidate.name === '林妹妹');
+
+    expect(names).toContain('林妹妹');
+    expect(names).not.toContain('妹妹');
+    expect(sister).toBeDefined();
+    expect(sister?.aliases ?? []).not.toContain('妹妹');
+  });
+
+  it('泛称说话人不进入候选', () => {
+    const text = [
+      '婆子说道：“一。”',
+      '嬷嬷笑道：“二。”',
+      '老太太说道：“三。”',
+      '头子说道：“四。”',
+      '姨妈笑道：“五。”',
+      '姥姥说道：“六。”',
+    ].join('\n');
+
+    const names = extractCharacterCandidates(text).map((candidate) => candidate.name);
+
+    expect(names).toEqual([]);
   });
 });
 
