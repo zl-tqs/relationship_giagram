@@ -8,7 +8,7 @@ import {
   SPECIAL_PREFIX_STOP_CHARS, SPECIAL_SUFFIXES, SPEAKER_PATTERN, STOP_WORDS,
   TRANSLITERATION_CHARS, WEAK_SURNAMES,
 } from './lexicon';
-import { isPhraseCandidate } from './candidateRules';
+import { isPhraseCandidate, isTransliterationLike } from './candidateRules';
 import type { CandidateConfidence, CharacterCandidate, Cooccurrence } from './types';
 
 export const DEFAULT_CANDIDATE_LIMIT = 120;
@@ -73,12 +73,6 @@ function isNonPersonWord(name: string) {
 
 function hasPlaceSuffix(name: string, suffixes: Set<string>) {
   return [...suffixes].some((suffix) => name.length > suffix.length && name.endsWith(suffix));
-}
-
-function isTransliterationLike(name: string) {
-  const chars = [...name].filter((char) => char !== '·');
-  const signals = chars.filter((char) => TRANSLITERATION_CHARS.has(char)).length;
-  return signals >= 2 || (name.includes('·') && chars.length >= 3);
 }
 
 function isValidNameShape(name: string) {
@@ -364,7 +358,6 @@ function dropKnownNamePhrases(candidates: Map<string, CandidateInfo>) {
 }
 
 function absorbShorterNames(
-  text: string,
   candidates: Map<string, CandidateInfo>,
   actualCounts: Map<string, number>,
 ) {
@@ -393,10 +386,7 @@ function absorbShorterNames(
         || shorter.sources.has('special')
         || shorter.sources.has('chapter')
         || shorter.sources.has('transliteration');
-      const standalone = Math.max(
-        0,
-        countOccurrences(text, shorter.name) - countOccurrences(text, longer.name),
-      );
+      const standalone = Math.max(0, shorterActual - longerActual);
       if ((suffixMatch || strongShorter) && (standalone > 0 || strongShorter)) {
         longer.aliases.add(shorter.name);
         for (const alias of shorter.aliases) longer.aliases.add(alias);
@@ -425,12 +415,13 @@ function expandSuffixAliases(text: string, candidates: Map<string, CandidateInfo
     }
     const suffixOwners = [...candidates.values()].filter((item) => item.name.endsWith(suffix));
     if (suffixOwners.length > 1) continue;
+    const candidateActual = countOccurrences(text, candidate.name);
     const count = Math.max(
       0,
-      countOccurrences(text, suffix) - countOccurrences(text, candidate.name),
+      countOccurrences(text, suffix) - candidateActual,
     );
     const required = candidate.sources.has('speaker')
-      ? Math.max(1, Math.ceil(countOccurrences(text, candidate.name) * 0.1))
+      ? Math.max(1, Math.ceil(candidateActual * 0.1))
       : 2;
     if (count >= required) {
       candidate.aliases.add(suffix);
@@ -517,7 +508,7 @@ export function extractCharacterCandidates(
   for (const name of candidates.keys()) actualCounts.set(name, countOccurrences(text, name));
   dropPhraseCandidates(candidates);
   dropKnownNamePhrases(candidates);
-  absorbShorterNames(text, candidates, actualCounts);
+  absorbShorterNames(candidates, actualCounts);
   expandSuffixAliases(text, candidates);
 
   for (const [name, info] of candidates) {
