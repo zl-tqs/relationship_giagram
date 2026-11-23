@@ -178,11 +178,47 @@ describe('候选规范化回归', () => {
     expect(names).toEqual([]);
   });
 
-  it('弱来源候选在负面上下文占比过高时被过滤', () => {
+  it('isWeakContextNoise 判定弱来源噪声并豁免强来源', () => {
     expect(isWeakContextNoise(new Set<CandidateSource>(['action']), 10, 8)).toBe(true);
     expect(isWeakContextNoise(new Set<CandidateSource>(['scan']), 1, 1)).toBe(true);
     expect(isWeakContextNoise(new Set<CandidateSource>(['speaker']), 1, 1)).toBe(false);
     expect(isWeakContextNoise(new Set<CandidateSource>(['action', 'chapter']), 10, 10)).toBe(false);
+  });
+
+  it('弱来源候选在负面上下文占比过高时被生产路径删除', () => {
+    const text = [
+      '他拉贾玉起来。',
+      '他推贾玉出去。',
+      '他拽贾玉回来。',
+    ].join('\n');
+
+    const names = extractCharacterCandidates(text).map((candidate) => candidate.name);
+
+    expect(names).not.toContain('贾玉');
+  });
+
+  it('强来源候选不被负面上下文门禁删除', () => {
+    const text = [
+      '贾玉说道：“一。”',
+      '他拉贾玉起来。',
+      '他推贾玉出去。',
+      '他拽贾玉回来。',
+    ].join('\n');
+
+    const names = extractCharacterCandidates(text).map((candidate) => candidate.name);
+
+    expect(names).toContain('贾玉');
+  });
+
+  it('出现不足 3 次的弱来源候选不进入上下文门禁', () => {
+    const text = [
+      '他拉贾玉起来。',
+      '他推贾玉出去。',
+    ].join('\n');
+
+    const names = extractCharacterCandidates(text).map((candidate) => candidate.name);
+
+    expect(names).toContain('贾玉');
   });
 });
 

@@ -499,12 +499,23 @@ function countOccurrences(text: string, name: string) {
 const BAD_CONTEXT_BEFORE = /[拉推扶抱背牵拽提拖瞅著着和与跟同向从到把被将]$/;
 const CONTEXT_GATE_MIN_COUNT = 3;
 
+function hasStrongSource(sources: Set<CandidateSource>) {
+  return [...sources].some((source) => STRONG_SOURCES.has(source));
+}
+
+/**
+ * 判断弱来源候选是否应作为上下文噪声丢弃。
+ *
+ * 调用方必须先应用低频策略：出现次数不足 CONTEXT_GATE_MIN_COUNT 的候选交给
+ * 既有频次规则处理，不要直接把 `actualCount < 2` 的分支用于生产路径，否则
+ * 短文本中只出现一次的合法人名会被误删。
+ */
 export function isWeakContextNoise(
   sources: Set<CandidateSource>,
   actualCount: number,
   badContexts: number,
 ) {
-  if ([...sources].some((source) => STRONG_SOURCES.has(source))) return false;
+  if (hasStrongSource(sources)) return false;
   if (actualCount < 2) return true;
   return badContexts / actualCount >= 0.6;
 }
@@ -527,10 +538,10 @@ function dropWeakContextNoise(
   actualCounts: Map<string, number>,
 ) {
   for (const [name, info] of candidates) {
+    if (hasStrongSource(info.sources)) continue;
     const actualCount = actualCounts.get(name) ?? 0;
-    // 出现次数不足 CONTEXT_GATE_MIN_COUNT 的弱候选交给既有频次规则处理
-    //（长文本已要求至少 2 次），此处只在上下文证据足够时按负面占比判定，
-    // 避免把小样本里合法的人名（如只出现一两次的王五、八戒）误删。
+    // 低频弱候选交给既有频次规则处理（短文本至少 1 次、长文本至少 2 次），
+    // 此处只对出现次数足够的弱候选按负面上下文占比判定，避免小样本误删。
     if (actualCount < CONTEXT_GATE_MIN_COUNT) continue;
     const badContexts = countBadContexts(text, name);
     if (isWeakContextNoise(info.sources, actualCount, badContexts)) {
