@@ -100,6 +100,29 @@ describe('候选规范化回归', () => {
       expect(names).not.toContain(noise);
     }
   });
+
+  it('过滤泛称、动作词和地名，不生成泛称别名', () => {
+    const text = [
+      '林黛玉说道：“林妹妹来了。”',
+      '林妹妹笑道：“姐姐好。”',
+      '奶奶说道：“父母来了。”',
+      '他收拾了扇子，并不理会。',
+      '荣国府里，怡红院、潇湘馆、大观园都安静。',
+    ].join('\n');
+
+    const candidates = extractCharacterCandidates(text);
+    const names = candidates.map((candidate) => candidate.name);
+
+    for (const noise of [
+      '奶奶', '父母', '收拾', '并不', '扇子',
+      '荣国府', '怡红院', '潇湘馆', '大观园',
+    ]) {
+      expect(names).not.toContain(noise);
+    }
+
+    const sister = candidates.find((candidate) => candidate.name === '林妹妹');
+    expect(sister?.aliases ?? []).not.toContain('妹妹');
+  });
 });
 
 describe('isPhraseCandidate 边界', () => {

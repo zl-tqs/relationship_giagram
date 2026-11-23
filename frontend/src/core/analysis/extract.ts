@@ -1,6 +1,7 @@
 import {
   ACTION_PATTERN, BOUNDARY_AFTER_CHARS, COLLECTIVE_PATTERN, COMMON_SURNAMES,
-  COMPOUND_SURNAMES, CONJUNCTION_PATTERN, HARD_PLACE_SUFFIXES, INVALID_END_CHARS,
+  COMPOUND_SURNAMES, CONJUNCTION_PATTERN, GENERIC_ALIAS_WORDS, GENERIC_TITLES,
+  HARD_PLACE_SUFFIXES, INVALID_END_CHARS,
   INVALID_START_CHARS, NAME_BLOCKED_INTERNAL, NAME_START_EXCEPTIONS, OBJECT_PATTERN,
   OBJECT_WORDS, PHRASE_PREFIX_CHARS, PREPOSITION_PATTERN, ROLE_WORDS,
   SCAN_GIVEN_END_CHARS, SHORT_PREFIX_SUFFIXES, SHORTEST_PREFIX_SUFFIXES,
@@ -67,6 +68,7 @@ function isNonPersonWord(name: string) {
   return STOP_WORDS.has(name)
     || ROLE_WORDS.has(name)
     || OBJECT_WORDS.has(name)
+    || GENERIC_TITLES.has(name)
     || SPECIAL_SUFFIXES.includes(name)
     || COLLECTIVE_PATTERN.test(name);
 }
@@ -426,7 +428,10 @@ function expandSuffixAliases(text: string, candidates: Map<string, CandidateInfo
       || candidate.sources.has('chapter');
     if (!trusted) continue;
     const suffix = candidate.name.slice(-2);
-    if (isNonPersonWord(suffix) || INVALID_END_CHARS.has(suffix[1]) || INVALID_START_CHARS.has(suffix[0])) {
+    if (GENERIC_ALIAS_WORDS.has(suffix)
+      || isNonPersonWord(suffix)
+      || INVALID_END_CHARS.has(suffix[1])
+      || INVALID_START_CHARS.has(suffix[0])) {
       continue;
     }
     const suffixOwners = [...candidates.values()].filter((item) => item.name.endsWith(suffix));

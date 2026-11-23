@@ -2,6 +2,7 @@ import { splitChapters } from './chapters';
 import { remapCooccurrences } from './cooccurrence';
 import { decodeNovelFile, type NovelEncoding } from './decode';
 import { buildCooccurrences, extractCharacterCandidates } from './extract';
+import { GENERIC_ALIAS_WORDS } from './lexicon';
 import type { CharacterCandidate, Cooccurrence } from './types';
 
 export interface PreprocessOutcome {
@@ -21,6 +22,7 @@ export function preprocessNovel(data: ArrayBuffer): PreprocessOutcome {
   for (const candidate of candidates) {
     allNames.push(candidate.name);
     for (const alias of candidate.aliases ?? []) {
+      if (alias === candidate.name || GENERIC_ALIAS_WORDS.has(alias)) continue;
       aliasMap[alias] = candidate.name;
       allNames.push(alias);
     }
