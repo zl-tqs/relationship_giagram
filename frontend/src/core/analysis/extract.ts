@@ -6,7 +6,7 @@ import {
   SCAN_GIVEN_END_CHARS, SHORT_PREFIX_SUFFIXES, SHORTEST_PREFIX_SUFFIXES,
   SINGLE_SURNAMES, SOFT_PLACE_SUFFIXES, SPECIAL_PREFIX_BLACKLIST,
   SPECIAL_PREFIX_STOP_CHARS, SPECIAL_SUFFIXES, SPEAKER_PATTERN, STOP_WORDS,
-  WEAK_SURNAMES,
+  TRANSLITERATION_CHARS, WEAK_SURNAMES,
 } from './lexicon';
 import type { CandidateConfidence, CharacterCandidate, Cooccurrence } from './types';
 
@@ -14,7 +14,7 @@ export const DEFAULT_CANDIDATE_LIMIT = 120;
 
 type Source =
   | 'chapter' | 'speaker' | 'action' | 'object' | 'preposition' | 'conjunction'
-  | 'special' | 'scan';
+  | 'special' | 'scan' | 'transliteration';
 
 interface CandidateInfo {
   name: string;
@@ -32,6 +32,7 @@ const SOURCE_SCORE: Record<Source, number> = {
   conjunction: 1,
   special: 3,
   scan: 1,
+  transliteration: 5,
 };
 
 const CONFIDENCE_ORDER = { high: 0, medium: 1, low: 2 } as const;
@@ -74,10 +75,17 @@ function hasPlaceSuffix(name: string, suffixes: Set<string>) {
   return [...suffixes].some((suffix) => name.length > suffix.length && name.endsWith(suffix));
 }
 
+function isTransliterationLike(name: string) {
+  const chars = [...name].filter((char) => char !== '·');
+  const signals = chars.filter((char) => TRANSLITERATION_CHARS.has(char)).length;
+  return signals >= 2 || (name.includes('·') && chars.length >= 3);
+}
+
 function isValidNameShape(name: string) {
   const special = Boolean(matchingRoleSuffix(name));
   const compound = COMPOUND_SURNAMES.some((surname) => name.startsWith(surname));
-  const maxLength = special ? 7 : compound ? 4 : 3;
+  const transliterated = isTransliterationLike(name);
+  const maxLength = special || transliterated ? 7 : compound ? 4 : 3;
   if (name.length < 2 || name.length > maxLength) return false;
   if (!isChinese(name)) return false;
   if (special) {
@@ -85,7 +93,9 @@ function isValidNameShape(name: string) {
   } else if (INVALID_START_CHARS.has(name[0]) && !NAME_START_EXCEPTIONS.has(name)) {
     return false;
   }
-  if (!special && INVALID_END_CHARS.has(name[name.length - 1])) return false;
+  const last = name[name.length - 1];
+  const transliterationEnd = last === '来' && isTransliterationLike(name);
+  if (!special && INVALID_END_CHARS.has(last) && !transliterationEnd) return false;
   if (NAME_FUNCTION_CHARS.test(name) || NAME_BLOCKED_INTERNAL.test(name)) return false;
   return !isNonPersonWord(name) && !hasInvalidRoleShape(name);
 }
@@ -96,9 +106,12 @@ function isStrongName(name: string) {
 
 function isScannedName(name: string) {
   if (/[一二三四五六七八九十]$/.test(name) && name.length > 2) return false;
+  const last = name[name.length - 1];
+  const endAllowed = SCAN_GIVEN_END_CHARS.has(last)
+    || (last === '来' && isTransliterationLike(name));
   return isValidNameShape(name)
     && surnameWeight(name) >= 0.5
-    && SCAN_GIVEN_END_CHARS.has(name[name.length - 1]);
+    && endAllowed;
 }
 
 function isSpecialName(name: string) {
@@ -238,6 +251,43 @@ function extractSpecialNames(text: string, candidates: Map<string, CandidateInfo
   }
 }
 
+const DOTTED_TRANSLITERATION_PATTERN = /[·•‧]/g;
+const TRANSLITERATION_PLACE_PREFIXES = [
+  '莫斯科', '基辅', '彼得堡', '彼得格勒', '乌克兰', '俄罗斯', '波兰',
+];
+
+function trimPlacePrefix(part: string) {
+  const place = TRANSLITERATION_PLACE_PREFIXES.find(
+    (item) => part.length > item.length && part.startsWith(item),
+  );
+  return place ? part.slice(place.length) : part;
+}
+
+function extractTransliteratedNames(text: string, candidates: Map<string, CandidateInfo>) {
+  DOTTED_TRANSLITERATION_PATTERN.lastIndex = 0;
+  let match = DOTTED_TRANSLITERATION_PATTERN.exec(text);
+  while (match) {
+    const dot = match.index;
+    let start = dot;
+    while (start > 0 && TRANSLITERATION_CHARS.has(text[start - 1])) start -= 1;
+    let end = dot + 1;
+    while (end < text.length && TRANSLITERATION_CHARS.has(text[end])) end += 1;
+    const before = trimPlacePrefix(text.slice(start, dot));
+    const after = text.slice(dot + 1, end);
+    if (before && after && before.length + after.length >= 3) {
+      const name = `${before}·${after}`;
+      addCandidate(candidates, name, 'transliteration');
+      const info = candidates.get(name);
+      if (info) {
+        for (const part of [before, after]) {
+          if (part.length >= 2) info.aliases.add(part);
+        }
+      }
+    }
+    match = DOTTED_TRANSLITERATION_PATTERN.exec(text);
+  }
+}
+
 function isInsideKnownName(text: string, index: number, knownNames: string[]) {
   for (const known of knownNames) {
     for (let offset = 1; offset < known.length; offset += 1) {
@@ -279,11 +329,13 @@ function dropKnownNamePhrases(candidates: Map<string, CandidateInfo>) {
   const strongNames = [...candidates.values()]
     .filter((info) => info.sources.has('speaker')
       || info.sources.has('special')
-      || info.sources.has('chapter'))
+      || info.sources.has('chapter')
+      || info.sources.has('transliteration'))
     .map((info) => info.name)
     .sort((left, right) => right.length - left.length);
 
   for (const [name] of candidates) {
+    if (name.includes('·')) continue;
     const extendedByRole = strongNames.some((known) => (
       known.length < name.length
       && name.startsWith(known)
@@ -297,7 +349,10 @@ function dropKnownNamePhrases(candidates: Map<string, CandidateInfo>) {
     const prefixedByPhrase = strongNames.some((known) => {
       if (known.length >= name.length || !name.endsWith(known)) return false;
       const prefix = name.slice(0, name.length - known.length);
-      return prefix.length === 1 && PHRASE_PREFIX_CHARS.has(prefix);
+      return prefix.length <= 3
+        && [...prefix].some((char) => (
+          INVALID_START_CHARS.has(char) || PHRASE_PREFIX_CHARS.has(char)
+        ));
     });
     if (prefixedByPhrase) candidates.delete(name);
   }
@@ -318,12 +373,14 @@ function absorbShorterNames(text: string, candidates: Map<string, CandidateInfo>
       const longerTrusted = longer.sources.has('speaker')
         || longer.sources.has('special')
         || longer.sources.has('chapter')
+        || longer.sources.has('transliteration')
         || longer.count >= shorter.count;
       if (!longerTrusted) continue;
       const suffixMatch = longer.name.endsWith(shorter.name);
       const strongShorter = shorter.sources.has('speaker')
         || shorter.sources.has('special')
-        || shorter.sources.has('chapter');
+        || shorter.sources.has('chapter')
+        || shorter.sources.has('transliteration');
       const standalone = Math.max(
         0,
         countOccurrences(text, shorter.name) - countOccurrences(text, longer.name),
@@ -346,7 +403,7 @@ function absorbShorterNames(text: string, candidates: Map<string, CandidateInfo>
 
 function expandSuffixAliases(text: string, candidates: Map<string, CandidateInfo>) {
   for (const candidate of candidates.values()) {
-    if (candidate.name.length < 3) continue;
+    if (candidate.name.length < 3 || candidate.name.includes('·')) continue;
     const trusted = candidate.sources.has('speaker')
       || candidate.sources.has('special')
       || candidate.sources.has('chapter');
@@ -438,6 +495,7 @@ export function extractCharacterCandidates(
   extractAfterVerbs(text, candidates, PREPOSITION_PATTERN, 'preposition');
   extractAfterVerbs(text, candidates, CONJUNCTION_PATTERN, 'conjunction');
   extractSpecialNames(text, candidates);
+  extractTransliteratedNames(text, candidates);
 
   scanSurnames(text, candidates, [...candidates.keys()]);
   applyChapterBoost(text, candidates);
@@ -446,7 +504,12 @@ export function extractCharacterCandidates(
   expandSuffixAliases(text, candidates);
 
   for (const [name, info] of candidates) {
-    if (!isValidNameShape(name) || isNonPersonWord(name)) {
+    const transliterated = info.sources.has('transliteration');
+    if (!transliterated && (!isValidNameShape(name) || isNonPersonWord(name))) {
+      candidates.delete(name);
+      continue;
+    }
+    if (transliterated && isNonPersonWord(name)) {
       candidates.delete(name);
       continue;
     }

@@ -110,6 +110,37 @@ describe('改进后的人物提取', () => {
     }
   });
 
+  it('强人名前后的动作词不形成更长候选', () => {
+    const text = [
+      '吕布说道：“玄德，久违了。”',
+      '玄德说道：“奉先，请。”',
+      '吕布目视玄德曰：“玄德，请。”',
+    ].join('\n');
+    const names = extractCharacterCandidates(text).map((candidate) => candidate.name);
+
+    expect(names).toEqual(expect.arrayContaining(['吕布', '玄德']));
+    expect(names).not.toContain('布目视玄德');
+  });
+
+  it('识别带间隔号和不带间隔号的音译人名', () => {
+    const text = [
+      '保尔·柯察金说道：“朱赫来，你要坚持。”',
+      '朱赫来说道：“保尔，你要坚持。”',
+      '阿尔焦姆说道：“冬妮亚来了。”',
+      '冬妮亚说道：“柯察金。”',
+    ].join('\n');
+    const candidates = extractCharacterCandidates(text);
+    const names = candidates.map((candidate) => candidate.name);
+    const paul = candidates.find((candidate) => candidate.name === '保尔·柯察金');
+
+    expect(names).toContain('保尔·柯察金');
+    expect(names).toContain('朱赫来');
+    expect(names).toContain('阿尔焦姆');
+    expect(names).toContain('冬妮亚');
+    expect(names).not.toContain('朱赫');
+    expect(paul?.aliases).toEqual(expect.arrayContaining(['保尔', '柯察金']));
+  });
+
   it('强说话人名后追加动词或名词不形成新的更长候选', () => {
     const text = [
       '孔明说道：“军师在此。”孔明作怪。',
