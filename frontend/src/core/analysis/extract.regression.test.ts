@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { isPhraseCandidate } from './candidateRules';
-import { extractCharacterCandidates } from './extract';
+import {
+  extractCharacterCandidates, isWeakContextNoise, type CandidateSource,
+} from './extract';
 
 describe('候选规范化回归', () => {
   it('动作短语不吞并真实短名，count 使用原文实际次数', () => {
@@ -174,6 +176,13 @@ describe('候选规范化回归', () => {
     const names = extractCharacterCandidates(text).map((candidate) => candidate.name);
 
     expect(names).toEqual([]);
+  });
+
+  it('弱来源候选在负面上下文占比过高时被过滤', () => {
+    expect(isWeakContextNoise(new Set<CandidateSource>(['action']), 10, 8)).toBe(true);
+    expect(isWeakContextNoise(new Set<CandidateSource>(['scan']), 1, 1)).toBe(true);
+    expect(isWeakContextNoise(new Set<CandidateSource>(['speaker']), 1, 1)).toBe(false);
+    expect(isWeakContextNoise(new Set<CandidateSource>(['action', 'chapter']), 10, 10)).toBe(false);
   });
 });
 

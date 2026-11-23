@@ -18,6 +18,11 @@ type Source =
   | 'chapter' | 'speaker' | 'action' | 'object' | 'preposition' | 'conjunction'
   | 'special' | 'scan' | 'transliteration';
 
+export type CandidateSource = Source;
+
+const STRONG_SOURCES = new Set<Source>(['speaker', 'special', 'chapter', 'transliteration']);
+const WEAK_SOURCES = new Set<Source>(['scan', 'action', 'object', 'preposition', 'conjunction']);
+
 interface CandidateInfo {
   name: string;
   sources: Set<Source>;
@@ -491,6 +496,49 @@ function countOccurrences(text: string, name: string) {
   return text.match(new RegExp(escaped, 'g'))?.length ?? 0;
 }
 
+const BAD_CONTEXT_BEFORE = /[拉推扶抱背牵拽提拖瞅著着和与跟同向从到把被将]$/;
+const CONTEXT_GATE_MIN_COUNT = 3;
+
+export function isWeakContextNoise(
+  sources: Set<CandidateSource>,
+  actualCount: number,
+  badContexts: number,
+) {
+  if ([...sources].some((source) => STRONG_SOURCES.has(source))) return false;
+  if (actualCount < 2) return true;
+  return badContexts / actualCount >= 0.6;
+}
+
+function countBadContexts(text: string, name: string) {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = new RegExp(escaped, 'g');
+  let bad = 0;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(text))) {
+    const before = text.slice(Math.max(0, match.index - 2), match.index);
+    if (BAD_CONTEXT_BEFORE.test(before)) bad += 1;
+  }
+  return bad;
+}
+
+function dropWeakContextNoise(
+  text: string,
+  candidates: Map<string, CandidateInfo>,
+  actualCounts: Map<string, number>,
+) {
+  for (const [name, info] of candidates) {
+    const actualCount = actualCounts.get(name) ?? 0;
+    // 出现次数不足 CONTEXT_GATE_MIN_COUNT 的弱候选交给既有频次规则处理
+    //（长文本已要求至少 2 次），此处只在上下文证据足够时按负面占比判定，
+    // 避免把小样本里合法的人名（如只出现一两次的王五、八戒）误删。
+    if (actualCount < CONTEXT_GATE_MIN_COUNT) continue;
+    const badContexts = countBadContexts(text, name);
+    if (isWeakContextNoise(info.sources, actualCount, badContexts)) {
+      candidates.delete(name);
+    }
+  }
+}
+
 function scoreOf(
   info: CandidateInfo,
   actualCount: number,
@@ -531,6 +579,7 @@ export function extractCharacterCandidates(
   dropKnownNamePhrases(text, candidates);
   absorbShorterNames(candidates, actualCounts);
   expandSuffixAliases(text, candidates);
+  dropWeakContextNoise(text, candidates, actualCounts);
 
   for (const [name, info] of candidates) {
     const transliterated = info.sources.has('transliteration');
@@ -546,9 +595,7 @@ export function extractCharacterCandidates(
       candidates.delete(name);
       continue;
     }
-    const onlyWeakSources = [...info.sources].every(
-      (source) => ['scan', 'action', 'object', 'preposition', 'conjunction'].includes(source),
-    );
+    const onlyWeakSources = [...info.sources].every((source) => WEAK_SOURCES.has(source));
     if (hasPlaceSuffix(name, HARD_PLACE_SUFFIXES)) {
       candidates.delete(name);
       continue;
