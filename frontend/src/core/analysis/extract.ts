@@ -398,6 +398,13 @@ function absorbShorterNames(
       if (removed.has(shorter.name) || !longer.name.includes(shorter.name)) continue;
       const longerActual = actualCounts.get(longer.name) ?? 0;
       const shorterActual = actualCounts.get(shorter.name) ?? 0;
+      const standalone = Math.max(0, shorterActual - longerActual);
+      // 频次比门禁：短名是强来源人物且独立出现证据远高于长候选时，长候选更
+      // 可能是拼接短语或截断切片（如 `明贾母王夫人` count=1 吞并 `贾母`
+      // count=1685），不能把高频真名从候选表删除。弱来源短名（如 `如今`）
+      // 仍允许被长候选吸收，避免通用词因门禁而回流到候选表。比例取 2 倍以
+      // 保留 `猪八戒 → 八戒`（standalone=2、longer=1）等合法别名吸收。
+      if (hasStrongSource(shorter.sources) && standalone > longerActual * 2) continue;
       const longerTrusted = longer.sources.has('speaker')
         || longer.sources.has('special')
         || longer.sources.has('chapter')
@@ -409,8 +416,8 @@ function absorbShorterNames(
         || shorter.sources.has('special')
         || shorter.sources.has('chapter')
         || shorter.sources.has('transliteration');
-      const standalone = Math.max(0, shorterActual - longerActual);
-      if ((suffixMatch || strongShorter) && (standalone > 0 || strongShorter)) {
+      if ((suffixMatch || strongShorter) && (standalone > 0 || strongShorter)
+        && !GENERIC_ALIAS_WORDS.has(shorter.name)) {
         longer.aliases.add(shorter.name);
         for (const alias of shorter.aliases) longer.aliases.add(alias);
       }
