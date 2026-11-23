@@ -380,6 +380,14 @@ function dropKnownNamePhrases(text: string, candidates: Map<string, CandidateInf
   }
 }
 
+function isAnchoredAliasName(name: string, shorterName: string) {
+  if (name.length !== shorterName.length + 1) return false;
+  // 单姓 + 短名：林黛玉/黛玉、薛宝钗/宝钗、贾宝玉/宝玉。
+  if (name.endsWith(shorterName)) return surnameWeight(name) >= 0.5;
+  // 口语昵称后缀：凤姐儿/凤姐；只放行常见的“儿”化形式。
+  return name.startsWith(shorterName) && name.endsWith('儿');
+}
+
 function absorbShorterNames(
   candidates: Map<string, CandidateInfo>,
   actualCounts: Map<string, number>,
@@ -399,12 +407,34 @@ function absorbShorterNames(
       const longerActual = actualCounts.get(longer.name) ?? 0;
       const shorterActual = actualCounts.get(shorter.name) ?? 0;
       const standalone = Math.max(0, shorterActual - longerActual);
+      // 合法全名别名例外：单姓 + 短名（如 `林黛玉/黛玉`、`薛宝钗/宝钗`）
+      // 或常见“儿”化昵称（如 `凤姐儿/凤姐`），且是唯一有足够支持的完整形式、
+      // 长名本身也有强来源时，允许长名吸收短名，避免主人物别名和共现映射丢失。
+      // 其他包含短名的弱来源/低频碎片（如 `时黛玉`、`黛玉先`）不参与竞争；
+      // `宝玉` 同时有 `贾宝玉` 与 `甄宝玉` 两个合格全名，仍不吸收。
+      const isAnchoredAlias = isAnchoredAliasName(longer.name, shorter.name);
+      const soleLonger = !isAnchoredAlias || entries.every((info) => (
+        info.name === longer.name
+        || removed.has(info.name)
+        || !(isAnchoredAliasName(info.name, shorter.name)
+          && hasStrongSource(info.sources)
+          && (actualCounts.get(info.name) ?? 0) >= 10)
+      ));
+      const aliasLink = isAnchoredAlias
+        && hasStrongSource(longer.sources)
+        && soleLonger
+        && longerActual >= 10;
       // 频次比门禁：短名是强来源人物且独立出现证据远高于长候选时，长候选更
       // 可能是拼接短语或截断切片（如 `明贾母王夫人` count=1 吞并 `贾母`
-      // count=1685），不能把高频真名从候选表删除。弱来源短名（如 `如今`）
-      // 仍允许被长候选吸收，避免通用词因门禁而回流到候选表。比例取 2 倍以
-      // 保留 `猪八戒 → 八戒`（standalone=2、longer=1）等合法别名吸收。
-      if (hasStrongSource(shorter.sources) && standalone > longerActual * 2) continue;
+      // count=1685），不能把高频真名从候选表删除。姓氏形态的弱来源短名同样
+      // 保护，避免真实人名只因缺少强上下文就被低频长候选吞并。非姓氏弱来源
+      // 通用词（如 `如今`）仍允许被长候选吸收，避免通用词回流到候选表。
+      // 比例取 2 倍以保留 `猪八戒 → 八戒`（standalone=2、longer=1）等合法别名。
+      if (!aliasLink && standalone > longerActual * 2) {
+        const weakSurname = !hasStrongSource(shorter.sources)
+          && surnameWeight(shorter.name) >= 0.5;
+        if (hasStrongSource(shorter.sources) || weakSurname) continue;
+      }
       const longerTrusted = longer.sources.has('speaker')
         || longer.sources.has('special')
         || longer.sources.has('chapter')

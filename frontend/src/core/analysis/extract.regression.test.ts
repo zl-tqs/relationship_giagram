@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { isPhraseCandidate } from './candidateRules';
+import { remapCooccurrences } from './cooccurrence';
 import {
-  extractCharacterCandidates, isWeakContextNoise, type CandidateSource,
+  buildCooccurrences, extractCharacterCandidates, isWeakContextNoise,
+  type CandidateSource,
 } from './extract';
+import { buildAliasIndex } from './preprocess';
+import { ROLE_WORDS, STOP_WORDS } from './lexicon';
 
 describe('候选规范化回归', () => {
   it('动作短语不吞并真实短名，count 使用原文实际次数', () => {
@@ -79,6 +83,51 @@ describe('候选规范化回归', () => {
     expect(names).toContain('贾宝玉');
     expect(names).not.toContain('宝玉');
     expect(candidates.find((candidate) => candidate.name === '贾宝玉')?.aliases).toContain('宝玉');
+  });
+
+  it('全名吸收姓氏前缀短名并保留别名映射', () => {
+    const lines = [
+      ...Array.from({ length: 10 }, () => '林黛玉说道：“一。”'),
+      ...Array.from({ length: 25 }, () => '黛玉笑道：“二。”'),
+      ...Array.from({ length: 10 }, () => '薛宝钗说道：“三。”'),
+      ...Array.from({ length: 25 }, () => '宝钗笑道：“四。”'),
+      ...Array.from({ length: 10 }, () => '凤姐儿说道：“五。”'),
+      ...Array.from({ length: 25 }, () => '凤姐笑道：“六。”'),
+      '林黛玉、薛宝钗与凤姐儿都在。',
+    ];
+    const text = lines.join('\n');
+
+    const candidates = extractCharacterCandidates(text);
+    const names = candidates.map((candidate) => candidate.name);
+    const byName = new Map(candidates.map((candidate) => [candidate.name, candidate]));
+
+    expect(byName.get('林黛玉')?.aliases).toContain('黛玉');
+    expect(byName.get('薛宝钗')?.aliases).toContain('宝钗');
+    expect(byName.get('凤姐儿')?.aliases).toContain('凤姐');
+    for (const shorter of ['黛玉', '宝钗', '凤姐']) {
+      expect(names).not.toContain(shorter);
+    }
+
+    const { aliasMap, allNames } = buildAliasIndex(candidates);
+    const pairs = remapCooccurrences(buildCooccurrences(text, allNames), aliasMap);
+    expect(pairs.length).toBeGreaterThan(0);
+    for (const pair of pairs) {
+      expect(pair.a.includes(pair.b) || pair.b.includes(pair.a)).toBe(false);
+    }
+  });
+
+  it('弱来源姓氏短名不被低频长候选吞并', () => {
+    const text = [
+      ...Array.from({ length: 5 }, () => '王明来了。'),
+      '王明夫人说道：“一。”',
+    ].join('\n');
+
+    const candidates = extractCharacterCandidates(text);
+    const names = candidates.map((candidate) => candidate.name);
+
+    expect(names).toContain('王明');
+    expect(candidates.find((candidate) => candidate.name === '王明夫人')?.aliases ?? [])
+      .not.toContain('王明');
   });
 
   it('保留完整姓名和角色称呼，不把传统字当作姓名', () => {
@@ -176,6 +225,25 @@ describe('候选规范化回归', () => {
     const names = extractCharacterCandidates(text).map((candidate) => candidate.name);
 
     expect(names).toEqual([]);
+  });
+
+  it('红楼梦全量回归补充的通用词停用表已裁决', () => {
+    const ratifiedGenericWords = [
+      '姊妹', '小厮', '喜欢', '悄悄', '商议', '头儿', '好好', '吃酒',
+      '料理', '去呢', '书房', '不多', '女孩儿', '嘱咐', '去请', '小子',
+      '果子', '相干', '眼泪', '总不', '好容易', '梳洗', '晚饭', '嘻嘻',
+      '样子', '故意', '老娘', '早晚', '空儿', '体面', '勉强', '去告诉',
+      '嗳哟', '诧异', '姐妹', '妹子', '反倒', '奇怪', '微微', '恍惚',
+      '来告诉', '厨房', '疑惑', '不顾', '远远', '婆婆', '伤感', '皆不',
+      '时不',
+    ];
+    for (const word of ratifiedGenericWords) {
+      expect(STOP_WORDS.has(word)).toBe(true);
+    }
+    for (const role of ['大夫', '太监']) {
+      expect(ROLE_WORDS.has(role)).toBe(true);
+      expect(STOP_WORDS.has(role)).toBe(false);
+    }
   });
 
   it('isWeakContextNoise 判定弱来源噪声并豁免强来源', () => {

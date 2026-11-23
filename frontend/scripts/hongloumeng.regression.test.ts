@@ -5,6 +5,10 @@ import { preprocessNovel, type PreprocessOutcome } from '../src/core/analysis/pr
 
 const novelPath = resolve(process.cwd(), '../resources/novel/txt/红楼梦.txt');
 
+if (!existsSync(novelPath)) {
+  console.warn(`[红楼梦本地提取回归] 跳过：未找到 ${novelPath}`);
+}
+
 describe.skipIf(!existsSync(novelPath))('红楼梦本地提取回归', () => {
   let result: PreprocessOutcome;
 
@@ -29,6 +33,12 @@ describe.skipIf(!existsSync(novelPath))('红楼梦本地提取回归', () => {
     ]) {
       expect(names).toContain(expected);
     }
+    const aliasesOf = (name: string) => (
+      result.candidates.find((candidate) => candidate.name === name)?.aliases ?? []
+    );
+    expect(aliasesOf('林黛玉')).toContain('黛玉');
+    expect(aliasesOf('薛宝钗')).toContain('宝钗');
+    expect(aliasesOf('凤姐儿')).toContain('凤姐');
     for (const noise of [
       '手来拉著宝玉', '著贾母', '著宝钗', '拉平儿', '推晴雯',
       '推紫鹃', '赦贾政', '纨探春', '命贾蓉', '里贾琏出来',
@@ -50,7 +60,15 @@ describe.skipIf(!existsSync(novelPath))('红楼梦本地提取回归', () => {
     ]) {
       expect(names).not.toContain(noise);
     }
-    const sister = result.candidates.find((candidate) => candidate.name === '凤姐儿');
-    expect(sister?.aliases ?? []).not.toContain('姐儿');
+    const fengJie = result.candidates.find((candidate) => candidate.name === '凤姐儿');
+    expect(fengJie).toBeDefined();
+    expect(fengJie?.aliases ?? []).not.toContain('姐儿');
+  }, 120000);
+
+  it('别名合并后共现不包含互为子串的人物对', () => {
+    expect(result.cooccurrences.length).toBeGreaterThan(0);
+    for (const pair of result.cooccurrences) {
+      expect(pair.a.includes(pair.b) || pair.b.includes(pair.a)).toBe(false);
+    }
   }, 120000);
 });
