@@ -36,7 +36,7 @@ const SOURCE_SCORE: Record<Source, number> = {
 };
 
 const CONFIDENCE_ORDER = { high: 0, medium: 1, low: 2 } as const;
-const NAME_FUNCTION_CHARS = /[的了着过和与跟同这那其我你他她它谁某几]/;
+const NAME_FUNCTION_CHARS = /[的了着著过和与跟同这那其我你他她它谁某几]/;
 
 function isChinese(value: string) {
   return /^[\u4e00-\u9fa5]+$/.test(value);
@@ -324,7 +324,20 @@ function dropPhraseCandidates(candidates: Map<string, CandidateInfo>) {
   }
 }
 
-function dropKnownNamePhrases(candidates: Map<string, CandidateInfo>) {
+const NAME_EXTENSION_SUFFIXES = new Set([
+  '夫人', '姑娘', '奶奶', '姐姐', '妹妹', '姐', '姨', '氏', '娘',
+]);
+
+function isAllowedNameExtension(text: string, name: string, known: string) {
+  const extra = name.slice(known.length);
+  if (extra === '云') {
+    return ['道', '说道', '笑道', '问道', '答道'].some((suffix) => text.includes(name + suffix));
+  }
+  return NAME_EXTENSION_SUFFIXES.has(extra)
+    || [...extra].every((char) => SCAN_GIVEN_END_CHARS.has(char));
+}
+
+function dropKnownNamePhrases(text: string, candidates: Map<string, CandidateInfo>) {
   const strongNames = [...candidates.values()]
     .filter((info) => info.sources.has('speaker')
       || info.sources.has('special')
@@ -342,8 +355,11 @@ function dropKnownNamePhrases(candidates: Map<string, CandidateInfo>) {
     ));
     if (extendedByRole) continue;
     if (strongNames.some((known) => known.length < name.length && name.startsWith(known))) {
-      candidates.delete(name);
-      continue;
+      const known = strongNames.find((item) => item.length < name.length && name.startsWith(item))!;
+      if (!isAllowedNameExtension(text, name, known)) {
+        candidates.delete(name);
+        continue;
+      }
     }
     const prefixedByPhrase = strongNames.some((known) => {
       if (known.length >= name.length || !name.endsWith(known)) return false;
@@ -507,7 +523,7 @@ export function extractCharacterCandidates(
   const actualCounts = new Map<string, number>();
   for (const name of candidates.keys()) actualCounts.set(name, countOccurrences(text, name));
   dropPhraseCandidates(candidates);
-  dropKnownNamePhrases(candidates);
+  dropKnownNamePhrases(text, candidates);
   absorbShorterNames(candidates, actualCounts);
   expandSuffixAliases(text, candidates);
 

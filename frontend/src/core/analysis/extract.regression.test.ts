@@ -78,6 +78,28 @@ describe('候选规范化回归', () => {
     expect(names).not.toContain('宝玉');
     expect(candidates.find((candidate) => candidate.name === '贾宝玉')?.aliases).toContain('宝玉');
   });
+
+  it('保留完整姓名和角色称呼，不把传统字当作姓名', () => {
+    const text = [
+      '史湘云道：“二哥哥来了。”',
+      '王熙凤笑道：“我来迟了。”',
+      '王夫人说道：“宝玉，你过来。”',
+      '尤二姐说道：“妹妹来了。”',
+      '贾宝玉说道：“我来了。”',
+      '说著贾母又笑道：“好。”',
+      '应著说道：“是。”',
+      '孔明云：“此计可行。”',
+    ].join('\n');
+
+    const names = extractCharacterCandidates(text).map((candidate) => candidate.name);
+
+    for (const expected of ['史湘云', '王熙凤', '王夫人', '尤二姐', '贾宝玉', '贾母', '孔明']) {
+      expect(names).toContain(expected);
+    }
+    for (const noise of ['史湘', '王熙', '尤二', '著贾母', '应著', '孔明云']) {
+      expect(names).not.toContain(noise);
+    }
+  });
 });
 
 describe('isPhraseCandidate 边界', () => {
