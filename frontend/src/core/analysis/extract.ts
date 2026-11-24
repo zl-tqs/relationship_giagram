@@ -3,11 +3,11 @@ import {
   COMPOUND_SURNAMES, CONJUNCTION_PATTERN, GENERIC_ALIAS_WORDS, GENERIC_TITLES,
   HARD_PLACE_SUFFIXES, INVALID_END_CHARS,
   INVALID_START_CHARS, NAME_BLOCKED_INTERNAL, NAME_START_EXCEPTIONS, OBJECT_PATTERN,
-  OBJECT_WORDS, PHRASE_PREFIX_CHARS, PREPOSITION_PATTERN, ROLE_WORDS,
+  OBJECT_WORDS, PHRASE_PREFIX_CHARS, PREPOSITION_PATTERN, RELATION_WORDS, ROLE_WORDS,
   EXACT_ONE_CHAR_PREFIX_SUFFIXES, SCAN_GIVEN_END_CHARS, SHORT_PREFIX_SUFFIXES,
   SHORTEST_PREFIX_SUFFIXES, SINGLE_SURNAMES, SOFT_PLACE_SUFFIXES,
   SPECIAL_PREFIX_BLACKLIST, SPECIAL_PREFIX_STOP_CHARS, SPECIAL_SUFFIXES,
-  SPEAKER_PATTERN, STOP_WORDS, TRANSLITERATION_CHARS, WEAK_SURNAMES,
+  SPEAKER_PATTERN, STOP_WORDS, TRANSLITERATION_CHARS, WEAK_NOISE_WORDS, WEAK_SURNAMES,
 } from './lexicon';
 import { isPhraseCandidate, isTransliterationLike } from './candidateRules';
 import type { CandidateConfidence, CharacterCandidate, Cooccurrence } from './types';
@@ -77,6 +77,7 @@ function hasInvalidRoleShape(name: string) {
 function isNonPersonWord(name: string) {
   return STOP_WORDS.has(name)
     || ROLE_WORDS.has(name)
+    || RELATION_WORDS.has(name)
     || OBJECT_WORDS.has(name)
     || GENERIC_TITLES.has(name)
     || SPECIAL_SUFFIXES.includes(name)
@@ -512,6 +513,38 @@ function absorbShorterNames(
   }
 }
 
+function resolveFullNameAliases(text: string, candidates: Map<string, CandidateInfo>) {
+  const entries = [...candidates.values()];
+  for (const short of entries) {
+    if (short.name.length !== 2 || !hasContextSource(short.sources)) continue;
+    // 已经是“姓氏 + 名”的两字名（如贾母）不能再被别的姓氏前缀扩展成明贾母。
+    if (surnameWeight(short.name) >= 0.5) continue;
+    const fullNames = entries.filter((info) => (
+      info.name !== short.name && isAnchoredAliasName(info.name, short.name)
+    ));
+    if (fullNames.length === 0) continue;
+
+    const chapterFullNames = fullNames.filter((info) => info.sources.has('chapter'));
+    const pool = chapterFullNames.length > 0 ? chapterFullNames : fullNames;
+    let chosen: CandidateInfo | undefined;
+    if (pool.length === 1) {
+      chosen = pool[0];
+    } else {
+      const byFirstSeen = [...pool].sort(
+        (left, right) => text.indexOf(left.name) - text.indexOf(right.name),
+      );
+      const firstSeen = text.indexOf(byFirstSeen[0].name);
+      const secondSeen = text.indexOf(byFirstSeen[1].name);
+      if (firstSeen >= 0 && secondSeen > firstSeen) chosen = byFirstSeen[0];
+    }
+    if (!chosen) continue;
+
+    chosen.aliases.add(short.name);
+    for (const alias of short.aliases) chosen.aliases.add(alias);
+    candidates.delete(short.name);
+  }
+}
+
 function expandSuffixAliases(text: string, candidates: Map<string, CandidateInfo>) {
   for (const candidate of candidates.values()) {
     if (candidate.name.length < 3 || candidate.name.includes('·')) continue;
@@ -686,6 +719,7 @@ export function extractCharacterCandidates(
   extendTruncatedScannedNames(text, candidates, scanFollowChars);
   const actualCounts = new Map<string, number>();
   for (const name of candidates.keys()) actualCounts.set(name, countOccurrences(text, name));
+  resolveFullNameAliases(text, candidates);
   absorbShorterNames(candidates, actualCounts);
   expandSuffixAliases(text, candidates);
   dropWeakContextNoise(text, candidates, actualCounts);
@@ -705,6 +739,10 @@ export function extractCharacterCandidates(
       continue;
     }
     const onlyWeakSources = [...info.sources].every((source) => WEAK_SOURCES.has(source));
+    if (onlyWeakSources && WEAK_NOISE_WORDS.has(name)) {
+      candidates.delete(name);
+      continue;
+    }
     if (hasPlaceSuffix(name, HARD_PLACE_SUFFIXES)) {
       candidates.delete(name);
       continue;
@@ -720,13 +758,19 @@ export function extractCharacterCandidates(
 
   const names = [...candidates.keys()];
   const partners = buildSentencePartners(text, names);
+  const rankCounts = new Map<string, number>();
   const scored = names.map((name) => {
     const info = candidates.get(name)!;
-    const actualCount = countOccurrences(text, name);
+    const actualCount = actualCounts.get(name) ?? countOccurrences(text, name);
+    let rankCount = actualCount;
+    for (const alias of info.aliases) {
+      rankCount = Math.max(rankCount, actualCounts.get(alias) ?? 0);
+    }
+    rankCounts.set(name, rankCount);
     return {
       name,
       count: actualCount,
-      confidence: confidenceOf(scoreOf(info, actualCount, partners.get(name))),
+      confidence: confidenceOf(scoreOf(info, rankCount, partners.get(name))),
       aliases: [...info.aliases].sort((left, right) => right.length - left.length),
     };
   });
@@ -735,7 +779,8 @@ export function extractCharacterCandidates(
     .sort((left, right) => {
       const byConfidence = CONFIDENCE_ORDER[left.confidence] - CONFIDENCE_ORDER[right.confidence];
       if (byConfidence !== 0) return byConfidence;
-      if (right.count !== left.count) return right.count - left.count;
+      const byRankCount = (rankCounts.get(right.name) ?? 0) - (rankCounts.get(left.name) ?? 0);
+      if (byRankCount !== 0) return byRankCount;
       return left.name.localeCompare(right.name, 'zh-Hans-CN');
     })
     .slice(0, limit);

@@ -351,6 +351,56 @@ describe('候选规范化回归', () => {
       expect(names).not.toContain(place);
     }
   });
+
+  it('过滤名词、关系称谓和意义不明片段', () => {
+    const text = [
+      '玻璃说道：“一。”',
+      '女婿笑道：“二。”',
+      '姑爷说道：“三。”',
+      '舅母笑道：“四。”',
+      '姐因说道：“五。”',
+    ].join('\n');
+
+    const names = extractCharacterCandidates(text).map((candidate) => candidate.name);
+
+    for (const noise of ['玻璃', '女婿', '姑爷', '舅母', '姐因']) {
+      expect(names).not.toContain(noise);
+    }
+  });
+
+  it('弱证据的副词/动词被过滤，容易在强来源下保留', () => {
+    const weakText = '他越发容易来吃，也觉得不妥。';
+    const weakNames = extractCharacterCandidates(weakText).map((candidate) => candidate.name);
+    for (const noise of ['越发', '容易', '来吃', '不妥']) {
+      expect(weakNames).not.toContain(noise);
+    }
+
+    const strongText = '容易说道：“一。”容易笑道：“二。”';
+    const strongNames = extractCharacterCandidates(strongText).map((candidate) => candidate.name);
+    expect(strongNames).toContain('容易');
+  });
+
+  it('唯一姓氏全名自动归一，代词式短名保留歧义时不强并', () => {
+    const text = [
+      '第三回 贾宝玉初试云雨情',
+      '贾宝玉说道：“一。”',
+      '宝玉笑道：“二。”',
+      ...Array.from({ length: 10 }, (_, index) => `甄宝玉说道：“甄${index}。”`),
+      '贾代儒说道：“四。”',
+      '代儒笑道：“五。”',
+    ].join('\n');
+
+    const candidates = extractCharacterCandidates(text);
+    const names = candidates.map((candidate) => candidate.name);
+    const byName = new Map(candidates.map((candidate) => [candidate.name, candidate]));
+
+    expect(byName.get('贾宝玉')?.aliases).toContain('宝玉');
+    expect(names).not.toContain('宝玉');
+    expect(names).toContain('甄宝玉');
+    expect(byName.get('甄宝玉')?.aliases ?? []).not.toContain('宝玉');
+    expect(byName.get('贾代儒')?.aliases).toContain('代儒');
+    expect(names).not.toContain('代儒');
+  });
 });
 
 describe('isAllowedNameExtension 边界', () => {
