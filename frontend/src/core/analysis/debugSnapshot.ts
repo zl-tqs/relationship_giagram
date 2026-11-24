@@ -1,4 +1,4 @@
-import type { CharacterCandidate, Cooccurrence } from './types';
+import type { CharacterCandidate, Cooccurrence, RelationshipMention } from './types';
 
 export interface LocalAnalysisSnapshotInput {
   fileName: string;
@@ -8,6 +8,7 @@ export interface LocalAnalysisSnapshotInput {
   textLength: number;
   candidates: CharacterCandidate[];
   cooccurrences: Cooccurrence[];
+  relationshipMentions?: RelationshipMention[];
   excerptPreview?: string;
 }
 
@@ -22,6 +23,7 @@ export interface LocalAnalysisSnapshot {
   candidateCount: number;
   candidates: CharacterCandidate[];
   cooccurrences: Cooccurrence[];
+  relationshipMentions: RelationshipMention[];
   excerptPreview: string;
 }
 
@@ -40,6 +42,7 @@ export function buildLocalAnalysisSnapshot(
     candidateCount: input.candidates.length,
     candidates: input.candidates,
     cooccurrences: input.cooccurrences,
+    relationshipMentions: input.relationshipMentions ?? [],
     excerptPreview: (input.excerptPreview ?? '').slice(0, 3000),
   };
 }

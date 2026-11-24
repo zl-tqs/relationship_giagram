@@ -19,7 +19,7 @@ import { buildCanvasFromAnalysis } from '../core/analysis/graph';
 import { remapCooccurrences } from '../core/analysis/cooccurrence';
 import { runPreprocess } from '../core/analysis/runPreprocess';
 import type {
-  AnalysisCharacter, AnalysisRelation, CandidateConfidence, Cooccurrence,
+  AnalysisCharacter, AnalysisRelation, CandidateConfidence, Cooccurrence, RelationshipMention,
 } from '../core/analysis/types';
 import { clearProjectCreatedThisSession, markManualSaved } from '../core/save/flags';
 import { useProjectStore } from '../stores/projectStore';
@@ -61,6 +61,10 @@ interface RelationRow extends AnalysisRelation {
   key: string;
 }
 
+interface RelationshipRow extends RelationshipMention {
+  key: string;
+}
+
 let rowKeySeed = 0;
 
 function newRowKey(prefix: string) {
@@ -92,6 +96,7 @@ export function AnalysisPage() {
   const [agreed, setAgreed] = useState(false);
   const [keepResult, setKeepResult] = useState(false);
   const [rows, setRows] = useState<CandidateRow[]>([]);
+  const [relationshipRows, setRelationshipRows] = useState<RelationshipRow[]>([]);
   const [chapterCount, setChapterCount] = useState(0);
   const [encoding, setEncoding] = useState('');
   const [characters, setCharacters] = useState<CharacterRow[]>([]);
@@ -154,6 +159,12 @@ export function AnalysisPage() {
           aliases: candidate.aliases ?? [],
         })),
       );
+      setRelationshipRows(
+        result.relationshipMentions.map((mention, index) => ({
+          ...mention,
+          key: `relationship-${index}`,
+        })),
+      );
       setProjectName(fileStem(file.name));
       setStep('confirm');
       if (import.meta.env.DEV) {
@@ -171,6 +182,7 @@ export function AnalysisPage() {
             textLength: result.text.length,
             candidates: result.candidates,
             cooccurrences: result.cooccurrences,
+            relationshipMentions: result.relationshipMentions,
             excerptPreview,
           }),
         ).catch(() => undefined);
@@ -202,6 +214,22 @@ export function AnalysisPage() {
 
   const mergeCandidates = (sourceKey: string, targetKey: string) => {
     setRows((current) => mergeCandidateRows(current, sourceKey, targetKey));
+  };
+
+  const mergeRelationship = (relationshipKey: string, targetKey: string) => {
+    const relationship = relationshipRows.find((row) => row.key === relationshipKey);
+    const target = rows.find((row) => row.key === targetKey);
+    if (!relationship || !target) return;
+    setRows((current) => current.map((row) => (
+      row.key === targetKey
+        ? {
+            ...row,
+            aliases: [...new Set([...(row.aliases ?? []), relationship.term])],
+          }
+        : row
+    )));
+    setRelationshipRows((current) => current.filter((row) => row.key !== relationshipKey));
+    message.success(`已将「${relationship.term}」合并到 ${target.name.trim() || target.originalName}`);
   };
 
   const updateCandidate = (key: string, patch: Partial<CandidateRow>) => {
@@ -773,6 +801,60 @@ export function AnalysisPage() {
               },
             ]}
           />
+          {relationshipRows.length > 0 && (
+            <Card
+              size="small"
+              title="未解析关系称谓"
+              style={{ marginTop: 16 }}
+            >
+              <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
+                这些称谓只在小说中以关系身份出现，未自动绑定人物。合并后会作为人物别名参与摘要替换，不会占用 120 个候选名额。
+              </Typography.Paragraph>
+              <Table<RelationshipRow>
+                rowKey="key"
+                size="small"
+                pagination={false}
+                dataSource={relationshipRows}
+                columns={[
+                  { title: '称谓', dataIndex: 'term', width: 90 },
+                  { title: '出现次数', dataIndex: 'count', width: 90 },
+                  {
+                    title: '上下文',
+                    dataIndex: 'context',
+                    ellipsis: true,
+                    render: (value: string | undefined) => value || '-',
+                  },
+                  {
+                    title: '操作',
+                    width: 220,
+                    render: (_, record) => (
+                      <Space size={0}>
+                        <Select
+                          size="small"
+                          placeholder="合并到人物"
+                          style={{ width: 130 }}
+                          showSearch
+                          optionFilterProp="label"
+                          options={rows
+                            .filter((row) => row.name.trim())
+                            .map((row) => ({ value: row.key, label: row.name.trim() }))}
+                          onChange={(targetKey) => mergeRelationship(record.key, targetKey)}
+                        />
+                        <Button
+                          type="link"
+                          onClick={() => setRelationshipRows((current) => (
+                            current.filter((row) => row.key !== record.key)
+                          ))}
+                        >
+                          忽略
+                        </Button>
+                      </Space>
+                    ),
+                  },
+                ]}
+              />
+            </Card>
+          )}
           <Space style={{ marginTop: 16 }}>
             <Button onClick={() => setStep('upload')} disabled={busy}>
               上一步

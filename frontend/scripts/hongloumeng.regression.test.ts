@@ -76,6 +76,10 @@ describe.skipIf(!existsSync(novelPath))('红楼梦本地提取回归', () => {
     const fengJie = result.candidates.find((candidate) => candidate.name === '凤姐儿');
     expect(fengJie).toBeDefined();
     expect(fengJie?.aliases ?? []).not.toContain('姐儿');
+
+    const relationTerms = result.relationshipMentions.map((mention) => mention.term);
+    expect(relationTerms).toEqual(expect.arrayContaining(['姑爷', '舅母']));
+    expect(result.relationshipMentions.every((mention) => mention.count > 0)).toBe(true);
   }, 120000);
 
   it('别名合并后共现不包含互为子串的人物对', () => {

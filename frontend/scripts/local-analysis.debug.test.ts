@@ -39,6 +39,7 @@ describe.skipIf(!novelPath)('本地提取调试', () => {
       candidateCount: result.candidates.length,
       candidates: result.candidates,
       cooccurrences: result.cooccurrences,
+      relationshipMentions: result.relationshipMentions,
       excerptPreview: excerpt.slice(0, 3000),
     };
 

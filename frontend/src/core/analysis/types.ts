@@ -13,6 +13,13 @@ export interface Cooccurrence {
   count: number;
 }
 
+export interface RelationshipMention {
+  term: string;
+  count: number;
+  suggestedTarget?: string;
+  context?: string;
+}
+
 export interface AnalysisCharacter {
   name: string;
   gender?: string;
