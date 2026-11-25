@@ -21,7 +21,7 @@ describe('AnalysisService', () => {
     save: vi.fn(),
     delete: vi.fn(),
   };
-  const ai = { analyze: vi.fn() };
+  const ai = { analyze: vi.fn(), lookupOnline: vi.fn() };
   const config = { get: vi.fn() };
 
   const structured = {
@@ -81,6 +81,43 @@ describe('AnalysisService', () => {
     await expect(
       service.createJob('u1', { fileName: 'novel.txt', fileSize: 1000 }),
     ).rejects.toMatchObject({ response: { code: 'QUOTA_EXCEEDED' } });
+  });
+
+  it('在线查询复用每日配额并返回知识库结果', async () => {
+    ai.lookupOnline.mockResolvedValue({
+      confidence: 'medium',
+      characters: [{ name: '贾宝玉', aliases: ['宝玉'] }],
+      relations: [],
+      sources: ['AI 知识库'],
+    });
+
+    const result = await service.onlineLookup('u1', {
+      title: '红楼梦',
+      author: '曹雪芹',
+      mode: 'always',
+    });
+
+    expect(ai.lookupOnline).toHaveBeenCalledWith({
+      title: '红楼梦',
+      author: '曹雪芹',
+      mode: 'always',
+    });
+    expect(result.characters).toEqual([{ name: '贾宝玉', aliases: ['宝玉'] }]);
+    await expect(service.quota('u1')).resolves.toMatchObject({ used: 1 });
+  });
+
+  it('mode=never 时不调用 AI', async () => {
+    const result = await service.onlineLookup('u1', { title: '红楼梦', mode: 'never' });
+    expect(result).toMatchObject({ confidence: 'low', characters: [], relations: [], sources: [] });
+    expect(ai.lookupOnline).not.toHaveBeenCalled();
+  });
+
+  it('在线查询也受每日配额限制', async () => {
+    jobsRepo.count.mockResolvedValue(3);
+    await expect(
+      service.onlineLookup('u1', { title: '红楼梦', mode: 'auto' }),
+    ).rejects.toMatchObject({ response: { code: 'QUOTA_EXCEEDED' } });
+    expect(ai.lookupOnline).not.toHaveBeenCalled();
   });
 
   it('创建任务时写入 pending 状态与保留期限', async () => {

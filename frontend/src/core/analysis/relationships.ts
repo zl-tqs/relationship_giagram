@@ -10,8 +10,12 @@ interface MentionStats {
 const RELATION_TERMS = [...RELATION_WORDS].sort((left, right) => right.length - left.length);
 
 function directTarget(before: string, after: string, knownNames: string[]) {
+  const afterIdentity = after.replace(/^(?:是|就是|乃|为)\s*/, '');
+  const beforeIdentity = before.replace(/\s*(?:是|就是|乃|为)$/, '');
   return knownNames.find((name) => after.startsWith(name))
-    ?? knownNames.find((name) => before.endsWith(name));
+    ?? knownNames.find((name) => afterIdentity.startsWith(name))
+    ?? knownNames.find((name) => before.endsWith(name))
+    ?? knownNames.find((name) => beforeIdentity.endsWith(name));
 }
 
 export function extractRelationshipMentions(

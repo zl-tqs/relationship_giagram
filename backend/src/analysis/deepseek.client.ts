@@ -1,6 +1,9 @@
 import { BadGatewayException, Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import type { AnalysisCharacter, AnalysisRelation, Cooccurrence } from './analysis.types.js';
+import type {
+  AnalysisCharacter, AnalysisRelation, Cooccurrence, OnlineLookupResult,
+} from './analysis.types.js';
+import { loadOnlineLookupPrompt, renderOnlineLookupPrompt } from './onlinePrompt.js';
 import { loadRelationshipPrompt, renderRelationshipPrompt } from './prompt.js';
 
 export interface DeepSeekAnalysisInput {
@@ -15,6 +18,12 @@ export interface DeepSeekAnalysisOutput {
   relations: AnalysisRelation[];
   model: string;
   tokenUsage: Record<string, number>;
+}
+
+export interface DeepSeekOnlineLookupInput {
+  title: string;
+  author?: string;
+  mode: string;
 }
 
 interface ChatCompletionResponse {
@@ -46,16 +55,17 @@ function buildPrompt(input: DeepSeekAnalysisInput, overridePath?: string) {
   );
 }
 
-function parseJson(content: string | undefined) {
+function parseObject(content: string | undefined) {
   if (!content) throw new Error('AI 未返回内容');
   const cleaned = content.trim().replace(/^```(?:json)?\s*/i, '').replace(/```$/, '').trim();
   const start = cleaned.indexOf('{');
   const end = cleaned.lastIndexOf('}');
   if (start < 0 || end <= start) throw new Error('AI 未返回 JSON');
-  const parsed = JSON.parse(cleaned.slice(start, end + 1)) as {
-    characters?: unknown;
-    relations?: unknown;
-  };
+  return JSON.parse(cleaned.slice(start, end + 1)) as Record<string, unknown>;
+}
+
+function parseJson(content: string | undefined) {
+  const parsed = parseObject(content);
   if (!Array.isArray(parsed.characters) || !Array.isArray(parsed.relations)) {
     throw new Error('AI 返回结构缺少 characters 或 relations');
   }
@@ -65,11 +75,70 @@ function parseJson(content: string | undefined) {
   };
 }
 
+function normalizeOnlineConfidence(value: unknown): 'high' | 'medium' | 'low' {
+  if (value === 'high' || value === 'medium' || value === 'low') return value;
+  return 'medium';
+}
+
+function parseOnlineJson(content: string | undefined): Omit<OnlineLookupResult, 'model' | 'tokenUsage'> {
+  const parsed = parseObject(content);
+  if (!Array.isArray(parsed.characters) || !Array.isArray(parsed.relations)) {
+    throw new Error('AI 返回结构缺少 characters 或 relations');
+  }
+  const characters = parsed.characters
+    .map((item) => item as Record<string, unknown>)
+    .filter((item) => typeof item.name === 'string' && item.name.trim())
+    .map((item) => ({
+      name: String(item.name).trim(),
+      aliases: Array.isArray(item.aliases)
+        ? item.aliases.filter((alias): alias is string => typeof alias === 'string' && Boolean(alias.trim()))
+        : undefined,
+      description: typeof item.description === 'string' ? item.description.trim() : undefined,
+    }));
+  const relations = parsed.relations
+    .map((item) => item as Record<string, unknown>)
+    .filter((item) => (
+      typeof item.from === 'string' && item.from.trim()
+      && typeof item.to === 'string' && item.to.trim()
+      && typeof item.type === 'string' && item.type.trim()
+    ))
+    .map((item) => ({
+      from: String(item.from).trim(),
+      to: String(item.to).trim(),
+      type: String(item.type).trim(),
+      description: typeof item.description === 'string' ? item.description.trim() : undefined,
+      confidence: normalizeOnlineConfidence(item.confidence),
+    }));
+  return {
+    confidence: normalizeOnlineConfidence(parsed.confidence),
+    characters,
+    relations,
+    sources: Array.isArray(parsed.sources)
+      ? parsed.sources.filter((source): source is string => typeof source === 'string' && Boolean(source.trim()))
+      : ['AI 知识库'],
+  };
+}
+
 @Injectable()
 export class DeepSeekClient {
   constructor(private readonly config: ConfigService) {}
 
   async analyze(input: DeepSeekAnalysisInput): Promise<DeepSeekAnalysisOutput> {
+    const prompt = buildPrompt(input, this.config.get<string>('ANALYSIS_PROMPT_PATH'));
+    const { parsed, model, tokenUsage } = await this.callModel(prompt, parseJson);
+    return { ...parsed, model, tokenUsage };
+  }
+
+  async lookupOnline(input: DeepSeekOnlineLookupInput): Promise<OnlineLookupResult> {
+    const prompt = renderOnlineLookupPrompt(loadOnlineLookupPrompt(), input);
+    const { parsed, model, tokenUsage } = await this.callModel(prompt, parseOnlineJson);
+    return { ...parsed, model, tokenUsage };
+  }
+
+  private async callModel<T>(
+    prompt: string,
+    parse: (content: string | undefined) => T,
+  ): Promise<{ parsed: T; model: string; tokenUsage: Record<string, number> }> {
     const apiKey = this.config.get<string>('DEEPSEEK_API_WEB');
     if (!apiKey) {
       throw new ServiceUnavailableException({
@@ -80,7 +149,6 @@ export class DeepSeekClient {
 
     const baseUrl = (this.config.get<string>('DEEPSEEK_BASE_URL') ?? 'https://api.deepseek.com').replace(/\/+$/, '');
     const model = this.config.get<string>('DEEPSEEK_MODEL') ?? 'deepseek-chat';
-    const prompt = buildPrompt(input, this.config.get<string>('ANALYSIS_PROMPT_PATH'));
     const body = JSON.stringify({
       model,
       temperature: 0.2,
@@ -108,9 +176,9 @@ export class DeepSeekClient {
         });
         if (!response.ok) throw new Error(`DeepSeek 请求失败 (${response.status})`);
         const data = (await response.json()) as ChatCompletionResponse;
-        const parsed = parseJson(data.choices?.[0]?.message?.content);
+        const parsed = parse(data.choices?.[0]?.message?.content);
         return {
-          ...parsed,
+          parsed,
           model: data.model ?? model,
           tokenUsage: {
             promptTokens: data.usage?.prompt_tokens ?? 0,

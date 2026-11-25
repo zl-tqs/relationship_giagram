@@ -8,11 +8,13 @@ import { LessThanOrEqual, Not, Repository } from 'typeorm';
 import { AnalysisJob } from './analysis-job.entity.js';
 import { AnalysisResult } from './analysis-result.entity.js';
 import {
-  type AnalysisCharacter, type AnalysisRelation, type StructuredAnalysisData,
+  type AnalysisCharacter, type AnalysisRelation, type OnlineLookupResult,
+  type StructuredAnalysisData,
 } from './analysis.types.js';
 import { DeepSeekClient } from './deepseek.client.js';
 import { CreateAnalysisJobDto, MAX_NOVEL_FILE_SIZE } from './dto/create-analysis-job.dto.js';
 import { ConfirmAnalysisDto } from './dto/confirm-analysis.dto.js';
+import { OnlineLookupDto } from './dto/online-lookup.dto.js';
 import { SaveStructuredDto } from './dto/save-structured.dto.js';
 import { UpdateAnalysisResultDto } from './dto/update-analysis-result.dto.js';
 
@@ -35,6 +37,9 @@ function normalizeName(value: unknown) {
 @Injectable()
 export class AnalysisService implements OnModuleInit, OnModuleDestroy {
   private timer: NodeJS.Timeout | null = null;
+  // v1.2.2 MVP: 在线查询与关系分析共享每日配额。进程内计数在多实例部署时不共享，
+  // 后续可迁移到 Redis 或独立 usage 表。
+  private readonly onlineUsage = new Map<string, { date: string; count: number }>();
 
   constructor(
     @InjectRepository(AnalysisJob) private readonly jobs: Repository<AnalysisJob>,
@@ -57,8 +62,34 @@ export class AnalysisService implements OnModuleInit, OnModuleDestroy {
   async quota(userId: string) {
     const date = todayKey();
     const limit = this.quotaLimit();
-    const used = await this.jobs.count({ where: { userId, quotaDate: date, status: Not('failed') } });
+    const used = await this.usedToday(userId);
     return { date, used, limit, remaining: Math.max(0, limit - used) };
+  }
+
+  async onlineLookup(userId: string, dto: OnlineLookupDto): Promise<OnlineLookupResult> {
+    if (dto.mode === 'never') {
+      return { confidence: 'low', characters: [], relations: [], sources: [] };
+    }
+    const limit = this.quotaLimit();
+    const used = await this.usedToday(userId);
+    if (used >= limit) {
+      throw new HttpException(
+        {
+          code: 'QUOTA_EXCEEDED',
+          message: `今日 AI 调用次数已用完（每日 ${limit} 次）`,
+          details: { used, limit },
+        },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    const result = await this.ai.lookupOnline({
+      title: dto.title.trim(),
+      author: dto.author?.trim() || undefined,
+      mode: dto.mode,
+    });
+    this.recordOnlineUse(userId);
+    return result;
   }
 
   async createJob(userId: string, dto: CreateAnalysisJobDto) {
@@ -66,9 +97,7 @@ export class AnalysisService implements OnModuleInit, OnModuleDestroy {
       throw new BadRequestException({ code: 'FILE_TOO_LARGE', message: '小说文件不能超过 10MB' });
     }
     const limit = this.quotaLimit();
-    const used = await this.jobs.count({
-      where: { userId, quotaDate: todayKey(), status: Not('failed') },
-    });
+    const used = await this.usedToday(userId);
     if (used >= limit) {
       throw new HttpException(
         {
@@ -215,6 +244,28 @@ export class AnalysisService implements OnModuleInit, OnModuleDestroy {
     const job = await this.jobs.findOne({ where: { id, userId } });
     if (!job) throw new NotFoundException({ code: 'NOT_FOUND', message: '分析任务不存在' });
     return job;
+  }
+
+  private async usedToday(userId: string) {
+    const jobCount = await this.jobs.count({
+      where: { userId, quotaDate: todayKey(), status: Not('failed') },
+    });
+    return jobCount + this.onlineCount(userId);
+  }
+
+  private onlineCount(userId: string) {
+    const date = todayKey();
+    const usage = this.onlineUsage.get(userId);
+    return usage?.date === date ? usage.count : 0;
+  }
+
+  private recordOnlineUse(userId: string) {
+    const date = todayKey();
+    const usage = this.onlineUsage.get(userId);
+    this.onlineUsage.set(userId, {
+      date,
+      count: (usage?.date === date ? usage.count : 0) + 1,
+    });
   }
 
   private quotaLimit() {

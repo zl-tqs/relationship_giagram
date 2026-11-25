@@ -6,20 +6,25 @@ import type { TableProps } from 'antd';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  confirmAnalysis, createAnalysisJob, getAnalysisQuota, saveAnalysisStructured,
+  confirmAnalysis, createAnalysisJob, getAnalysisQuota, onlineLookup, saveAnalysisStructured,
   updateAnalysisResult, type AnalysisQuota,
 } from '../api/analysis';
 import { saveCanvas } from '../api/canvas';
 import { toApiError } from '../api/client';
 import { saveLocalAnalysisDebug } from '../api/debug';
-import { mergeCandidateRows, type MergeableCandidate } from '../core/analysis/candidates';
+import {
+  addOnlineAliases, buildOnlineCandidateRows, mergeCandidateRows,
+  type MergeableCandidate, type OnlineCandidateRow,
+} from '../core/analysis/candidates';
 import { buildLocalAnalysisSnapshot } from '../core/analysis/debugSnapshot';
+import { DEFAULT_CANDIDATE_LIMIT } from '../core/analysis/extract';
 import { buildExcerpt } from '../core/analysis/excerpt';
 import { buildCanvasFromAnalysis } from '../core/analysis/graph';
 import { remapCooccurrences } from '../core/analysis/cooccurrence';
 import { runPreprocess } from '../core/analysis/runPreprocess';
 import type {
-  AnalysisCharacter, AnalysisRelation, CandidateConfidence, Cooccurrence, RelationshipMention,
+  AnalysisCharacter, AnalysisRelation, CandidateConfidence, Cooccurrence, OnlineLookupMode,
+  OnlineLookupResult, RelationshipMention,
 } from '../core/analysis/types';
 import { clearProjectCreatedThisSession, markManualSaved } from '../core/save/flags';
 import { useProjectStore } from '../stores/projectStore';
@@ -65,6 +70,12 @@ interface RelationshipRow extends RelationshipMention {
   key: string;
 }
 
+const ONLINE_MODE_OPTIONS = [
+  { value: 'auto', label: '自动（推荐）' },
+  { value: 'always', label: '始终查询' },
+  { value: 'never', label: '不查询' },
+] as const;
+
 let rowKeySeed = 0;
 
 function newRowKey(prefix: string) {
@@ -74,6 +85,13 @@ function newRowKey(prefix: string) {
 
 function fileStem(name: string) {
   return name.replace(/\.[^.]+$/, '').trim().slice(0, 100) || 'AI 提取项目';
+}
+
+const ONLINE_MODE_STORAGE_KEY = 'analysisOnlineMode';
+
+function loadOnlineMode(): OnlineLookupMode {
+  const saved = localStorage.getItem(ONLINE_MODE_STORAGE_KEY);
+  return saved === 'always' || saved === 'never' || saved === 'auto' ? saved : 'auto';
 }
 
 function errorMessage(error: unknown) {
@@ -97,6 +115,13 @@ export function AnalysisPage() {
   const [keepResult, setKeepResult] = useState(false);
   const [rows, setRows] = useState<CandidateRow[]>([]);
   const [relationshipRows, setRelationshipRows] = useState<RelationshipRow[]>([]);
+  const [onlineMode, setOnlineMode] = useState<OnlineLookupMode>(loadOnlineMode);
+  const [onlineTitle, setOnlineTitle] = useState('');
+  const [onlineAuthor, setOnlineAuthor] = useState('');
+  const [onlineResult, setOnlineResult] = useState<OnlineLookupResult | null>(null);
+  const [onlineRows, setOnlineRows] = useState<OnlineCandidateRow[]>([]);
+  const [onlineStatus, setOnlineStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
+  const [onlineError, setOnlineError] = useState('');
   const [chapterCount, setChapterCount] = useState(0);
   const [encoding, setEncoding] = useState('');
   const [characters, setCharacters] = useState<CharacterRow[]>([]);
@@ -122,6 +147,74 @@ export function AnalysisPage() {
     void refreshQuota();
   }, [refreshQuota]);
 
+  const updateOnlineMode = (mode: OnlineLookupMode) => {
+    localStorage.setItem(ONLINE_MODE_STORAGE_KEY, mode);
+    setOnlineMode(mode);
+  };
+
+  const queryOnline = async (
+    localRows: CandidateRow[],
+    title = onlineTitle,
+    mode = onlineMode,
+  ) => {
+    const normalizedTitle = title.trim();
+    if (!normalizedTitle) {
+      setOnlineStatus('error');
+      setOnlineError('请先填写作品标题');
+      return;
+    }
+    setOnlineStatus('loading');
+    setOnlineError('');
+    try {
+      const result = await onlineLookup({
+        title: normalizedTitle,
+        author: onlineAuthor.trim() || undefined,
+        mode,
+      });
+      setOnlineResult(result);
+      if (mode === 'auto' && result.confidence === 'low') {
+        setOnlineRows([]);
+        setOnlineStatus('done');
+        return;
+      }
+      setRows((current) => addOnlineAliases(current, result.characters));
+      setOnlineRows(buildOnlineCandidateRows(localRows, result.characters));
+      setOnlineStatus('done');
+      void refreshQuota();
+    } catch (error) {
+      setOnlineStatus('error');
+      setOnlineError(errorMessage(error));
+    }
+  };
+
+  const addSelectedOnline = () => {
+    const available = Math.max(0, DEFAULT_CANDIDATE_LIMIT - rows.length);
+    const selected = onlineRows
+      .filter((row) => row.selected && !row.matched)
+      .slice(0, available);
+    if (selected.length === 0) {
+      message.warning(rows.length >= DEFAULT_CANDIDATE_LIMIT
+        ? `候选已满 ${DEFAULT_CANDIDATE_LIMIT} 人，请先移除不需要的本地候选`
+        : '请先勾选仅在线人物');
+      return;
+    }
+    const selectedKeys = new Set(selected.map((row) => row.key));
+    setRows((current) => [
+      ...current,
+      ...selected.map((row, index) => ({
+        key: `online-add-${Date.now()}-${index}`,
+        originalName: row.name,
+        name: row.name,
+        count: 0,
+        confidence: 'low' as CandidateConfidence,
+        selected: true,
+        aliases: row.aliases,
+      })),
+    ]);
+    setOnlineRows((current) => current.filter((row) => !selectedKeys.has(row.key)));
+    message.success(`已加入 ${selected.length} 位在线人物，请确认姓名后再分析`);
+  };
+
   const acceptFile = (next: File) => {
     if (!next.name.toLowerCase().endsWith('.txt')) {
       message.error('当前版本仅支持 .txt 小说文件');
@@ -132,6 +225,12 @@ export function AnalysisPage() {
       return;
     }
     setFile(next);
+    setOnlineTitle(fileStem(next.name));
+    setOnlineAuthor('');
+    setOnlineResult(null);
+    setOnlineRows([]);
+    setOnlineStatus('idle');
+    setOnlineError('');
     setError('');
   };
 
@@ -148,17 +247,16 @@ export function AnalysisPage() {
       cooccurrencesRef.current = result.cooccurrences;
       setChapterCount(result.chapterCount);
       setEncoding(result.encoding);
-      setRows(
-        result.candidates.map((candidate, index) => ({
-          key: `candidate-${index}`,
-          originalName: candidate.name,
-          name: candidate.name,
-          count: candidate.count,
-          confidence: candidate.confidence,
-          selected: true,
-          aliases: candidate.aliases ?? [],
-        })),
-      );
+      const localRows = result.candidates.map((candidate, index) => ({
+        key: `candidate-${index}`,
+        originalName: candidate.name,
+        name: candidate.name,
+        count: candidate.count,
+        confidence: candidate.confidence,
+        selected: true,
+        aliases: candidate.aliases ?? [],
+      }));
+      setRows(localRows);
       setRelationshipRows(
         result.relationshipMentions.map((mention, index) => ({
           ...mention,
@@ -167,6 +265,9 @@ export function AnalysisPage() {
       );
       setProjectName(fileStem(file.name));
       setStep('confirm');
+      if (onlineMode !== 'never') {
+        void queryOnline(localRows, fileStem(file.name), onlineMode);
+      }
       if (import.meta.env.DEV) {
         const excerptPreview = buildExcerpt(
           result.text,
@@ -690,6 +791,13 @@ export function AnalysisPage() {
                 onChange={setTemplate}
                 style={{ width: 180 }}
               />
+              <Typography.Text>联网增强</Typography.Text>
+              <Select
+                value={onlineMode}
+                options={[...ONLINE_MODE_OPTIONS]}
+                onChange={updateOnlineMode}
+                style={{ width: 150 }}
+              />
             </Space>
             <Checkbox checked={keepResult} onChange={(event) => setKeepResult(event.target.checked)}>
               保存分析结果以便后续编辑（保留 30 天）
@@ -801,6 +909,135 @@ export function AnalysisPage() {
               },
             ]}
           />
+          {onlineMode !== 'never' && (
+            <Card
+              size="small"
+              title="联网增强（AI 知识库）"
+              style={{ marginTop: 16 }}
+            >
+              <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
+                只发送作品标题、作者和查询模式，不上传小说正文、关系图或标注。在线结果只作为候选和关系提示，需要你确认后才会进入后续分析。
+              </Typography.Paragraph>
+              <Space wrap style={{ marginBottom: 12 }}>
+                <Input
+                  value={onlineTitle}
+                  maxLength={200}
+                  placeholder="作品标题"
+                  style={{ width: 220 }}
+                  onChange={(event) => setOnlineTitle(event.target.value)}
+                />
+                <Input
+                  value={onlineAuthor}
+                  maxLength={100}
+                  placeholder="作者（可选）"
+                  style={{ width: 160 }}
+                  onChange={(event) => setOnlineAuthor(event.target.value)}
+                />
+                <Select
+                  value={onlineMode}
+                  options={[...ONLINE_MODE_OPTIONS]}
+                  onChange={updateOnlineMode}
+                  style={{ width: 150 }}
+                />
+                <Button
+                  loading={onlineStatus === 'loading'}
+                  onClick={() => void queryOnline(rows)}
+                >
+                  查询在线知识
+                </Button>
+              </Space>
+              {onlineError && (
+                <Alert
+                  type="warning"
+                  showIcon
+                  message="在线增强失败，本地候选仍可使用"
+                  description={onlineError}
+                  style={{ marginBottom: 12 }}
+                />
+              )}
+              {onlineResult && (
+                <Space wrap style={{ marginBottom: 8 }}>
+                  <Typography.Text type="secondary">
+                    在线置信度
+                  </Typography.Text>
+                  <Tag color={CONFIDENCE_COLORS[onlineResult.confidence]}>
+                    {CONFIDENCE_LABELS[onlineResult.confidence]}
+                  </Tag>
+                  <Typography.Text type="secondary">
+                    来源：{onlineResult.sources.join('、') || 'AI 知识库'}
+                  </Typography.Text>
+                  {onlineMode === 'auto' && onlineResult.confidence === 'low' && (
+                    <Typography.Text type="secondary">
+                      置信度不足，已保留本地结果
+                    </Typography.Text>
+                  )}
+                </Space>
+              )}
+              {onlineRows.length > 0 && (
+                <>
+                  <Table<OnlineCandidateRow>
+                    rowKey="key"
+                    size="small"
+                    pagination={false}
+                    dataSource={onlineRows}
+                    rowSelection={{
+                      selectedRowKeys: onlineRows.filter((row) => row.selected).map((row) => row.key),
+                      onChange: (keys) => setOnlineRows((current) => current.map((row) => ({
+                        ...row,
+                        selected: keys.includes(row.key),
+                      }))),
+                      getCheckboxProps: (row) => ({ disabled: row.matched }),
+                    }}
+                    columns={[
+                      { title: '在线人物', dataIndex: 'name', width: 120 },
+                      {
+                        title: '别名',
+                        dataIndex: 'aliases',
+                        width: 160,
+                        render: (value: string[]) => value.join('、') || '-',
+                      },
+                      { title: '描述', dataIndex: 'description', ellipsis: true },
+                      {
+                        title: '状态',
+                        width: 100,
+                        render: (_, row) => (
+                          <Tag color={row.matched ? 'green' : 'blue'}>
+                            {row.matched ? '双方匹配' : '仅在线'}
+                          </Tag>
+                        ),
+                      },
+                    ]}
+                  />
+                  <Button
+                    type="primary"
+                    ghost
+                    style={{ marginTop: 8 }}
+                    onClick={addSelectedOnline}
+                  >
+                    加入选中在线人物
+                  </Button>
+                </>
+              )}
+              {onlineResult && onlineResult.relations.length > 0 && (
+                <div style={{ marginTop: 16 }}>
+                  <Typography.Text strong>在线关系提示（不会自动写入）</Typography.Text>
+                  <Table<OnlineLookupResult['relations'][number]>
+                    rowKey={(record) => `${record.from}-${record.to}-${record.type}`}
+                    size="small"
+                    pagination={false}
+                    dataSource={onlineResult.relations}
+                    style={{ marginTop: 8 }}
+                    columns={[
+                      { title: '起点', dataIndex: 'from', width: 120 },
+                      { title: '终点', dataIndex: 'to', width: 120 },
+                      { title: '类型', dataIndex: 'type', width: 100 },
+                      { title: '说明', dataIndex: 'description', ellipsis: true },
+                    ]}
+                  />
+                </div>
+              )}
+            </Card>
+          )}
           {relationshipRows.length > 0 && (
             <Card
               size="small"

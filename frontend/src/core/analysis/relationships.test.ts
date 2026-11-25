@@ -31,6 +31,17 @@ describe('关系称谓识别', () => {
     ]);
   });
 
+  it('身份判断句中的唯一目标也可以自动归一', () => {
+    const result = preprocess([
+      '王夫人说道：“一。”',
+      '舅母是王夫人笑道：“二。”',
+    ].join('\n'));
+
+    const ladyWang = result.candidates.find((candidate) => candidate.name === '王夫人');
+    expect(ladyWang?.aliases).toContain('舅母');
+    expect(result.relationshipMentions).toHaveLength(0);
+  });
+
   it('所属上下文只记录关系称谓，不把所属人物误当目标', () => {
     const result = preprocess([
       '贾琏说道：“一。”',

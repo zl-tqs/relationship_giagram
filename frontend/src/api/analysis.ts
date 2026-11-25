@@ -1,6 +1,7 @@
 import { api } from './client.js';
 import type {
-  AnalysisCharacter, AnalysisResult, AnalysisRelation, StructuredAnalysisInput,
+  AnalysisCharacter, AnalysisResult, AnalysisRelation, OnlineLookupMode, OnlineLookupResult,
+  StructuredAnalysisInput,
 } from '../core/analysis/types.js';
 
 export interface AnalysisQuota {
@@ -31,6 +32,15 @@ export interface ConfirmAnalysisResponse {
 
 export async function getAnalysisQuota() {
   const { data } = await api.get<AnalysisQuota>('/analysis/quota');
+  return data;
+}
+
+export async function onlineLookup(payload: {
+  title: string;
+  author?: string;
+  mode: OnlineLookupMode;
+}) {
+  const { data } = await api.post<OnlineLookupResult>('/analysis/online-lookup', payload);
   return data;
 }
 

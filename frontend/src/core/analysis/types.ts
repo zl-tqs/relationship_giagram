@@ -20,6 +20,31 @@ export interface RelationshipMention {
   context?: string;
 }
 
+export type OnlineLookupMode = 'auto' | 'always' | 'never';
+
+export interface OnlineLookupCharacter {
+  name: string;
+  aliases?: string[];
+  description?: string;
+}
+
+export interface OnlineLookupRelation {
+  from: string;
+  to: string;
+  type: string;
+  description?: string;
+  confidence?: CandidateConfidence;
+}
+
+export interface OnlineLookupResult {
+  confidence: CandidateConfidence;
+  characters: OnlineLookupCharacter[];
+  relations: OnlineLookupRelation[];
+  sources: string[];
+  model?: string;
+  tokenUsage?: Record<string, number>;
+}
+
 export interface AnalysisCharacter {
   name: string;
   gender?: string;

@@ -6,6 +6,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
 import { AnalysisService } from './analysis.service.js';
 import { ConfirmAnalysisDto } from './dto/confirm-analysis.dto.js';
 import { CreateAnalysisJobDto } from './dto/create-analysis-job.dto.js';
+import { OnlineLookupDto } from './dto/online-lookup.dto.js';
 import { SaveStructuredDto } from './dto/save-structured.dto.js';
 import { UpdateAnalysisResultDto } from './dto/update-analysis-result.dto.js';
 
@@ -17,6 +18,14 @@ export class AnalysisController {
   @Get('quota')
   quota(@CurrentUser() user: { userId: string }) {
     return this.analysis.quota(user.userId);
+  }
+
+  @Post('online-lookup')
+  onlineLookup(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: OnlineLookupDto,
+  ) {
+    return this.analysis.onlineLookup(user.userId, dto);
   }
 
   @Post('jobs')

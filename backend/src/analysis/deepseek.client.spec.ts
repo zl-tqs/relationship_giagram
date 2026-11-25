@@ -83,6 +83,44 @@ describe('DeepSeekClient', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it('在线查询只发送标题/作者/模式并解析知识库结果', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      responseWith(JSON.stringify({
+        confidence: 'high',
+        characters: [{ name: '贾宝玉', aliases: ['宝玉'], description: '主角' }],
+        relations: [{ from: '贾宝玉', to: '林黛玉', type: '恋人', confidence: 'medium' }],
+        sources: ['AI 知识库'],
+      })),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await client.lookupOnline({
+      title: '红楼梦',
+      author: '曹雪芹',
+      mode: 'always',
+    });
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0][1].body));
+    expect(body.messages[1].content).toContain('红楼梦');
+    expect(body.messages[1].content).toContain('曹雪芹');
+    expect(body.messages[1].content).not.toContain('小说片段');
+    expect(result.confidence).toBe('high');
+    expect(result.characters[0]).toMatchObject({ name: '贾宝玉', aliases: ['宝玉'] });
+    expect(result.relations[0]).toMatchObject({ from: '贾宝玉', to: '林黛玉', type: '恋人' });
+  });
+
+  it('在线查询返回未知作品时保留 low 和空列表', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      responseWith(JSON.stringify({
+        confidence: 'low', characters: [], relations: [], sources: [],
+      })),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await client.lookupOnline({ title: '不存在的作品', mode: 'auto' });
+    expect(result).toMatchObject({ confidence: 'low', characters: [], relations: [], sources: [] });
+  });
+
   it('请求体中包含已确认人物与结构化片段', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       responseWith(JSON.stringify({ characters: [], relations: [] })),

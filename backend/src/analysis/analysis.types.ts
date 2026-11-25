@@ -49,3 +49,26 @@ export interface AnalysisResultData {
   model: string;
   tokenUsage: Record<string, number>;
 }
+
+export interface OnlineLookupCharacter {
+  name: string;
+  aliases?: string[];
+  description?: string;
+}
+
+export interface OnlineLookupRelation {
+  from: string;
+  to: string;
+  type: string;
+  description?: string;
+  confidence?: Confidence;
+}
+
+export interface OnlineLookupResult {
+  confidence: Confidence;
+  characters: OnlineLookupCharacter[];
+  relations: OnlineLookupRelation[];
+  sources: string[];
+  model?: string;
+  tokenUsage?: Record<string, number>;
+}
